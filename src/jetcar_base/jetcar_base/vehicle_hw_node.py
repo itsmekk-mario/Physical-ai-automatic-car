@@ -202,13 +202,17 @@ class VehicleHardwareNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = VehicleHardwareNode()
+    node = None
     try:
+        node = VehicleHardwareNode()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        print(f'vehicle_hw_node failed to start: {e}')
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         rclpy.shutdown()
 
 

@@ -1,3 +1,5 @@
+import fcntl
+import os
 import time
 from smbus2 import SMBus
 
@@ -16,8 +18,12 @@ class PCA9685:
     def __init__(self, bus_num=7, address=0x40, pwm_freq=50.0):
         self.bus_num = bus_num
         self.address = address
-        self.bus = SMBus(bus_num)
+        self._lock_file = None
+        self.bus = None
         self.pwm_freq = pwm_freq
+
+        self._acquire_lock()
+        self.bus = SMBus(bus_num)
 
         self.write8(PCA9685_MODE1, ALLCALL)
         self.write8(PCA9685_MODE2, OUTDRV)
@@ -34,6 +40,33 @@ class PCA9685:
         if self.bus is not None:
             self.bus.close()
             self.bus = None
+        self._release_lock()
+
+    def _acquire_lock(self):
+        lock_path = f'/tmp/jetcar_pca9685_bus{self.bus_num}_addr{self.address:02x}.lock'
+        self._lock_file = open(lock_path, 'w')
+        try:
+            fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            self._lock_file.close()
+            self._lock_file = None
+            raise RuntimeError(
+                'PCA9685 is already in use by another process. '
+                f'Only one hardware node may access bus={self.bus_num}, '
+                f'address=0x{self.address:02x} at a time.'
+            ) from exc
+
+        self._lock_file.write(str(os.getpid()))
+        self._lock_file.flush()
+
+    def _release_lock(self):
+        if self._lock_file is None:
+            return
+        try:
+            fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
+        finally:
+            self._lock_file.close()
+            self._lock_file = None
 
     def read8(self, reg):
         return self.bus.read_byte_data(self.address, reg)

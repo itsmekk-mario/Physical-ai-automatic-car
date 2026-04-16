@@ -21,6 +21,7 @@ class MotorTestNode(Node):
         self.declare_parameter('right_enb_channel', 6)
 
         self.declare_parameter('motor_max_duty', 0.8)
+        self.declare_parameter('pca_pwm_freq', 1000.0)
 
         self.i2c_bus = self.get_parameter('i2c_bus').value
         self.i2c_address = self.get_parameter('i2c_address').value
@@ -34,11 +35,12 @@ class MotorTestNode(Node):
         self.right_in4 = self.get_parameter('right_in4_channel').value
 
         self.motor_max_duty = float(self.get_parameter('motor_max_duty').value)
+        self.pca_pwm_freq = float(self.get_parameter('pca_pwm_freq').value)
 
         self.pca = PCA9685(
             bus_num=self.i2c_bus,
             address=self.i2c_address,
-            pwm_freq=1000.0
+            pwm_freq=self.pca_pwm_freq
         )
 
         self.estop = False
@@ -58,7 +60,10 @@ class MotorTestNode(Node):
         )
 
         self.stop_all()
-        self.get_logger().info('motor_test_node started')
+        self.get_logger().info(
+            f'motor_test_node started | pwm_freq={self.pca_pwm_freq}Hz '
+            '(do not run with other PCA9685 hardware nodes)'
+        )
 
     def set_duty_cycle(self, channel, duty):
         duty = max(0.0, min(1.0, duty))
@@ -121,13 +126,17 @@ class MotorTestNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = MotorTestNode()
+    node = None
     try:
+        node = MotorTestNode()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        print(f'motor_test_node failed to start: {e}')
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         rclpy.shutdown()
 
 

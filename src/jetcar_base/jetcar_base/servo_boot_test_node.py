@@ -46,8 +46,14 @@ class ServoBootTestNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ServoBootTestNode()
-    node.destroy_node()
+    node = None
+    try:
+        node = ServoBootTestNode()
+    except Exception as e:
+        print(f'servo_boot_test_node failed to start: {e}')
+    finally:
+        if node is not None:
+            node.destroy_node()
     rclpy.shutdown()
 
 

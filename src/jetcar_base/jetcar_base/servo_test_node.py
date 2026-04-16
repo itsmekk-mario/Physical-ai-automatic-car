@@ -84,13 +84,17 @@ class ServoTestNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ServoTestNode()
+    node = None
     try:
+        node = ServoTestNode()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        print(f'servo_test_node failed to start: {e}')
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         rclpy.shutdown()
 
 
