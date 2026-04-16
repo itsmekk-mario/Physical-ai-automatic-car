@@ -23,6 +23,7 @@ setup(
     entry_points={
         'console_scripts': [
             'safety_supervisor_node = jetcar_decision.safety_supervisor_node:main',
+            'autonomous_driver_node = jetcar_decision.autonomous_driver_node:main',
         ],
     },
 )

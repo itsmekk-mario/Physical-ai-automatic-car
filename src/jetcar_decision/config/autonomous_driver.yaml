@@ -1,0 +1,6 @@
+autonomous_driver_node:
+  ros__parameters:
+    cruise_throttle: 0.25
+    hazard_stop_distance_m: 0.8
+    lane_follow_gain: 1.0
+    publish_rate_hz: 10.0
