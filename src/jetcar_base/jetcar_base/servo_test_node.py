@@ -69,13 +69,7 @@ class ServoTestNode(Node):
 
     def destroy_node(self):
         try:
-            self.target_tick = self.servo_center_tick
-            while self.current_tick != self.target_tick:
-                if self.current_tick < self.target_tick:
-                    self.current_tick += 1
-                else:
-                    self.current_tick -= 1
-                self.apply_tick(self.current_tick)
+            self.apply_tick(self.servo_center_tick)
             self.pca.close()
         except Exception as e:
             self.get_logger().error(f'cleanup error: {e}')

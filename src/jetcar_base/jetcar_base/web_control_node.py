@@ -1,10 +1,11 @@
 import threading
+from collections import deque
 
 from flask import Flask, request, jsonify, render_template_string
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, Int32, Bool
+from std_msgs.msg import Float32, Bool
 
 
 HTML_PAGE = """
@@ -66,9 +67,11 @@ HTML_PAGE = """
     <h1>JetCar Web Control</h1>
     <div class="status">
         <div>W/S: throttle ±10%</div>
-        <div>A/D: steering step</div>
+        <div>A/D: steering left/right</div>
+        <div>C: steering center</div>
         <div>X: throttle 0</div>
-        <div>E: emergency stop toggle</div>
+        <div>E: emergency stop ON</div>
+        <div>R: emergency stop OFF</div>
     </div>
 
     <div class="grid">
@@ -87,6 +90,8 @@ HTML_PAGE = """
 
     <div style="margin-top:20px;">
         <button class="danger" onclick="sendCommand('e')">E-STOP</button>
+        <button onclick="sendCommand('r')">RELEASE</button>
+        <button onclick="sendCommand('c')">CENTER</button>
     </div>
 
     <script>
@@ -100,7 +105,7 @@ HTML_PAGE = """
 
         document.addEventListener('keydown', function(event) {
             const key = event.key.toLowerCase();
-            if (['w', 'a', 's', 'd', 'x', 'e'].includes(key)) {
+            if (['w', 'a', 's', 'd', 'x', 'e', 'r', 'c'].includes(key)) {
                 sendCommand(key);
             }
         });
@@ -117,21 +122,27 @@ class WebControlNode(Node):
         self.declare_parameter('host', '0.0.0.0')
         self.declare_parameter('port', 5000)
         self.declare_parameter('throttle_step', 0.1)
-        self.declare_parameter('steering_step_cmd', 1)
+        self.declare_parameter('steering_step_cmd', 0.1)
         self.declare_parameter('publish_rate_hz', 10.0)
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)
         self.throttle_step = float(self.get_parameter('throttle_step').value)
-        self.steering_step_cmd = int(self.get_parameter('steering_step_cmd').value)
+        self.steering_step_cmd = float(self.get_parameter('steering_step_cmd').value)
         self.publish_rate_hz = float(self.get_parameter('publish_rate_hz').value)
 
         self.current_throttle = 0.0
+        self.current_steering = 0.0
         self.estop = False
+        self.command_queue = deque()
+        self.command_lock = threading.Lock()
 
         self.pub_throttle = self.create_publisher(Float32, '/vehicle/throttle', 10)
-        self.pub_steering = self.create_publisher(Int32, '/vehicle/steering_step', 10)
+        self.pub_steering = self.create_publisher(Float32, '/vehicle/steering', 10)
         self.pub_estop = self.create_publisher(Bool, '/vehicle/emergency_stop', 10)
+        self.sub_estop_state = self.create_subscription(
+            Bool, '/vehicle/emergency_stop_state', self.estop_state_callback, 10
+        )
 
         period = 1.0 / self.publish_rate_hz
         self.timer = self.create_timer(period, self.timer_callback)
@@ -149,15 +160,21 @@ class WebControlNode(Node):
         msg.data = float(self.current_throttle)
         self.pub_throttle.publish(msg)
 
-    def publish_steering(self, step):
-        msg = Int32()
-        msg.data = int(step)
+    def publish_steering(self):
+        msg = Float32()
+        msg.data = float(self.current_steering)
         self.pub_steering.publish(msg)
 
     def publish_estop(self):
         msg = Bool()
         msg.data = bool(self.estop)
         self.pub_estop.publish(msg)
+
+    def clamp_steering(self):
+        self.current_steering = max(-1.0, min(1.0, self.current_steering))
+
+    def estop_state_callback(self, msg: Bool):
+        self.estop = bool(msg.data)
 
     def handle_key(self, key: str):
         if key == 'w':
@@ -184,22 +201,39 @@ class WebControlNode(Node):
         elif key == 'a':
             if self.estop:
                 return
-            self.publish_steering(-self.steering_step_cmd)
-            self.get_logger().info('web key=a steering left')
+            self.current_steering -= self.steering_step_cmd
+            self.clamp_steering()
+            self.publish_steering()
+            self.get_logger().info(f'web key=a steering={self.current_steering:.2f}')
 
         elif key == 'd':
             if self.estop:
                 return
-            self.publish_steering(self.steering_step_cmd)
-            self.get_logger().info('web key=d steering right')
+            self.current_steering += self.steering_step_cmd
+            self.clamp_steering()
+            self.publish_steering()
+            self.get_logger().info(f'web key=d steering={self.current_steering:.2f}')
+
+        elif key == 'c':
+            if self.estop:
+                return
+            self.current_steering = 0.0
+            self.publish_steering()
+            self.get_logger().info('web key=c steering center')
 
         elif key == 'e':
-            self.estop = not self.estop
+            self.estop = True
             self.publish_estop()
-            if self.estop:
-                self.current_throttle = 0.0
-                self.publish_throttle()
-            self.get_logger().info(f'web key=e estop={self.estop}')
+            self.current_throttle = 0.0
+            self.current_steering = 0.0
+            self.publish_throttle()
+            self.publish_steering()
+            self.get_logger().info('web key=e estop=True')
+
+        elif key == 'r':
+            self.estop = False
+            self.publish_estop()
+            self.get_logger().info('web key=r estop=False')
 
     def setup_routes(self):
         @self.app.route('/', methods=['GET'])
@@ -211,11 +245,13 @@ class WebControlNode(Node):
             data = request.get_json(silent=True) or {}
             key = str(data.get('key', '')).lower().strip()
             if key:
-                self.handle_key(key)
+                with self.command_lock:
+                    self.command_queue.append(key)
             return jsonify({
                 'ok': True,
                 'key': key,
                 'throttle': self.current_throttle,
+                'steering': self.current_steering,
                 'estop': self.estop
             })
 
@@ -223,7 +259,11 @@ class WebControlNode(Node):
         self.app.run(host=self.host, port=self.port, debug=False, use_reloader=False)
 
     def timer_callback(self):
+        with self.command_lock:
+            while self.command_queue:
+                self.handle_key(self.command_queue.popleft())
         self.publish_throttle()
+        self.publish_steering()
 
 
 def main(args=None):

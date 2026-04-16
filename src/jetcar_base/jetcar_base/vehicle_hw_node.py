@@ -18,6 +18,8 @@ class VehicleHardwareNode(Node):
         self.declare_parameter('servo_min_tick', 236)
         self.declare_parameter('servo_max_tick', 410)
         self.declare_parameter('servo_step_tick', 3)
+        self.declare_parameter('recenter_on_estop', True)
+        self.declare_parameter('recenter_on_timeout', True)
 
         # left motor
         self.declare_parameter('left_ena_channel', 1)
@@ -41,6 +43,8 @@ class VehicleHardwareNode(Node):
         self.servo_min_tick = int(self.get_parameter('servo_min_tick').value)
         self.servo_max_tick = int(self.get_parameter('servo_max_tick').value)
         self.servo_step_tick = int(self.get_parameter('servo_step_tick').value)
+        self.recenter_on_estop = bool(self.get_parameter('recenter_on_estop').value)
+        self.recenter_on_timeout = bool(self.get_parameter('recenter_on_timeout').value)
 
         self.left_ena = self.get_parameter('left_ena_channel').value
         self.left_in1 = self.get_parameter('left_in1_channel').value
@@ -68,6 +72,9 @@ class VehicleHardwareNode(Node):
         self.sub_steering = self.create_subscription(
             Int32, '/vehicle/steering_step', self.steering_callback, 10
         )
+        self.sub_steering_abs = self.create_subscription(
+            Float32, '/vehicle/steering', self.steering_abs_callback, 10
+        )
         self.sub_throttle = self.create_subscription(
             Float32, '/vehicle/throttle', self.throttle_callback, 10
         )
@@ -76,6 +83,7 @@ class VehicleHardwareNode(Node):
         )
 
         self.pub_state = self.create_publisher(String, '/vehicle/state', 10)
+        self.pub_estop_state = self.create_publisher(Bool, '/vehicle/emergency_stop_state', 10)
         self.timer = self.create_timer(0.05, self.timer_callback)
 
         self.set_steering_tick(self.servo_center_tick)
@@ -87,11 +95,17 @@ class VehicleHardwareNode(Node):
             f'min={self.servo_min_tick}, max={self.servo_max_tick}, '
             f'step={self.servo_step_tick}'
         )
+        self.publish_estop_state()
 
     def publish_state(self, text: str):
         msg = String()
         msg.data = text
         self.pub_state.publish(msg)
+
+    def publish_estop_state(self):
+        msg = Bool()
+        msg.data = self.estop
+        self.pub_estop_state.publish(msg)
 
     def set_pwm_raw(self, channel: int, duty: float):
         duty = max(0.0, min(1.0, duty))
@@ -104,6 +118,14 @@ class VehicleHardwareNode(Node):
         self.current_servo_tick = tick
         self.pca.set_pwm(self.steering_channel, 0, self.current_servo_tick)
         self.get_logger().info(f'steering_tick={self.current_servo_tick}')
+
+    def set_steering_normalized(self, value: float):
+        value = max(-1.0, min(1.0, float(value)))
+        if value >= 0.0:
+            tick = self.servo_center_tick + value * (self.servo_max_tick - self.servo_center_tick)
+        else:
+            tick = self.servo_center_tick + value * (self.servo_center_tick - self.servo_min_tick)
+        self.set_steering_tick(int(round(tick)))
 
     def set_left_motor(self, throttle: float):
         throttle = max(-1.0, min(1.0, throttle))
@@ -165,6 +187,13 @@ class VehicleHardwareNode(Node):
         delta = int(msg.data) * self.servo_step_tick
         self.set_steering_tick(self.current_servo_tick + delta)
 
+    def steering_abs_callback(self, msg: Float32):
+        if self.estop:
+            return
+
+        self.last_cmd_time = self.get_clock().now()
+        self.set_steering_normalized(float(msg.data))
+
     def throttle_callback(self, msg: Float32):
         if self.estop:
             self.stop_all()
@@ -179,16 +208,26 @@ class VehicleHardwareNode(Node):
         if self.estop:
             self.get_logger().warn('EMERGENCY STOP ON')
             self.stop_all()
+            if self.recenter_on_estop:
+                self.set_steering_tick(self.servo_center_tick)
             self.publish_state('EMERGENCY_STOP=ON')
         else:
             self.get_logger().info('EMERGENCY STOP OFF')
             self.publish_state('EMERGENCY_STOP=OFF')
+        self.publish_estop_state()
 
     def timer_callback(self):
         dt = (self.get_clock().now() - self.last_cmd_time).nanoseconds / 1e9
-        if dt > self.command_timeout_sec and abs(self.current_throttle) > 1e-4:
-            self.stop_all()
-            self.publish_state('timeout_stop')
+        if dt > self.command_timeout_sec:
+            timed_out = False
+            if abs(self.current_throttle) > 1e-4:
+                self.stop_all()
+                timed_out = True
+            if self.recenter_on_timeout and self.current_servo_tick != self.servo_center_tick:
+                self.set_steering_tick(self.servo_center_tick)
+                timed_out = True
+            if timed_out:
+                self.publish_state('timeout_stop')
 
     def destroy_node(self):
         try:

@@ -5,7 +5,7 @@ import tty
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, Int32, Bool
+from std_msgs.msg import Float32, Bool
 
 
 HELP_TEXT = """
@@ -16,8 +16,10 @@ w : throttle +10%
 s : throttle -10%
 a : steer left
 d : steer right
+c : steering center
 x : throttle = 0
-e : emergency stop toggle
+e : emergency stop ON
+r : emergency stop OFF
 q : quit
 ========================================
 """
@@ -29,17 +31,21 @@ class KeyboardControlNode(Node):
 
         self.declare_parameter('throttle_step', 0.1)
         self.declare_parameter('publish_rate_hz', 10.0)
-        self.declare_parameter('steering_step_cmd', 1)
+        self.declare_parameter('steering_step_cmd', 0.1)
 
         self.throttle_step = float(self.get_parameter('throttle_step').value)
         self.publish_rate_hz = float(self.get_parameter('publish_rate_hz').value)
-        self.steering_step_cmd = int(self.get_parameter('steering_step_cmd').value)
+        self.steering_step_cmd = float(self.get_parameter('steering_step_cmd').value)
 
         self.pub_throttle = self.create_publisher(Float32, '/vehicle/throttle', 10)
-        self.pub_steering = self.create_publisher(Int32, '/vehicle/steering_step', 10)
+        self.pub_steering = self.create_publisher(Float32, '/vehicle/steering', 10)
         self.pub_estop = self.create_publisher(Bool, '/vehicle/emergency_stop', 10)
+        self.sub_estop_state = self.create_subscription(
+            Bool, '/vehicle/emergency_stop_state', self.estop_state_callback, 10
+        )
 
         self.current_throttle = 0.0
+        self.current_steering = 0.0
         self.estop = False
 
         period = 1.0 / self.publish_rate_hz
@@ -52,16 +58,20 @@ class KeyboardControlNode(Node):
         self.print_status()
 
     def print_status(self):
-        print(f'[STATUS] throttle={self.current_throttle:.2f}, estop={"ON" if self.estop else "OFF"}')
+        print(
+            f'[STATUS] throttle={self.current_throttle:.2f}, '
+            f'steering={self.current_steering:.2f}, '
+            f'estop={"ON" if self.estop else "OFF"}'
+        )
 
     def publish_throttle(self):
         msg = Float32()
         msg.data = float(self.current_throttle)
         self.pub_throttle.publish(msg)
 
-    def publish_steering_step(self, step: int):
-        msg = Int32()
-        msg.data = int(step)
+    def publish_steering(self):
+        msg = Float32()
+        msg.data = float(self.current_steering)
         self.pub_steering.publish(msg)
 
     def publish_estop(self):
@@ -71,6 +81,12 @@ class KeyboardControlNode(Node):
 
     def clamp_throttle(self):
         self.current_throttle = max(-1.0, min(1.0, self.current_throttle))
+
+    def clamp_steering(self):
+        self.current_steering = max(-1.0, min(1.0, self.current_steering))
+
+    def estop_state_callback(self, msg: Bool):
+        self.estop = bool(msg.data)
 
     def get_key(self):
         tty.setraw(sys.stdin.fileno())
@@ -110,27 +126,45 @@ class KeyboardControlNode(Node):
             if self.estop:
                 print('[INFO] E-stop is ON. Steering blocked.')
                 return
-            self.publish_steering_step(-self.steering_step_cmd)
+            self.current_steering -= self.steering_step_cmd
+            self.clamp_steering()
+            self.publish_steering()
             print('[KEY] a -> steer left')
+            self.print_status()
 
         elif key == 'd':
             if self.estop:
                 print('[INFO] E-stop is ON. Steering blocked.')
                 return
-            self.publish_steering_step(self.steering_step_cmd)
+            self.current_steering += self.steering_step_cmd
+            self.clamp_steering()
+            self.publish_steering()
             print('[KEY] d -> steer right')
+            self.print_status()
+
+        elif key == 'c':
+            if self.estop:
+                print('[INFO] E-stop is ON. Steering blocked.')
+                return
+            self.current_steering = 0.0
+            self.publish_steering()
+            print('[KEY] c -> steering center')
+            self.print_status()
 
         elif key == 'e':
-            self.estop = not self.estop
+            self.estop = True
             self.publish_estop()
+            self.current_throttle = 0.0
+            self.current_steering = 0.0
+            self.publish_throttle()
+            self.publish_steering()
+            print('[KEY] e -> EMERGENCY STOP ON')
+            self.print_status()
 
-            if self.estop:
-                self.current_throttle = 0.0
-                self.publish_throttle()
-                print('[KEY] e -> EMERGENCY STOP ON')
-            else:
-                print('[KEY] e -> EMERGENCY STOP OFF')
-
+        elif key == 'r':
+            self.estop = False
+            self.publish_estop()
+            print('[KEY] r -> EMERGENCY STOP OFF')
             self.print_status()
 
         elif key == 'q':
@@ -143,6 +177,7 @@ class KeyboardControlNode(Node):
             self.handle_key(key)
 
         self.publish_throttle()
+        self.publish_steering()
 
     def destroy_node(self):
         try:
