@@ -1,0 +1,5 @@
+safety_supervisor_node:
+  ros__parameters:
+    emergency_distance_m: 0.8
+    lane_assist_gain: 0.8
+    publish_rate_hz: 10.0
