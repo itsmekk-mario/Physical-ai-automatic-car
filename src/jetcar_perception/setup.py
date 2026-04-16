@@ -23,6 +23,7 @@ setup(
     entry_points={
         'console_scripts': [
             'stereo_camera_node = jetcar_perception.stereo_camera_node:main',
+            'stereo_rectification_node = jetcar_perception.stereo_rectification_node:main',
         ],
     },
 )

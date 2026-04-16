@@ -1,0 +1,9 @@
+stereo_rectification_node:
+  ros__parameters:
+    calibration_file: config/stereo_calibration.yaml
+    fx_px: 700.0
+    fy_px: 700.0
+    cx_px: 640.0
+    cy_px: 360.0
+    baseline_m: 0.06
+    publish_rate_hz: 2.0
