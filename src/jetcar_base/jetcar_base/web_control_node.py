@@ -118,11 +118,13 @@ class WebControlNode(Node):
         self.declare_parameter('port', 5000)
         self.declare_parameter('throttle_step', 0.1)
         self.declare_parameter('steering_step_cmd', 1)
+        self.declare_parameter('publish_rate_hz', 10.0)
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)
         self.throttle_step = float(self.get_parameter('throttle_step').value)
         self.steering_step_cmd = int(self.get_parameter('steering_step_cmd').value)
+        self.publish_rate_hz = float(self.get_parameter('publish_rate_hz').value)
 
         self.current_throttle = 0.0
         self.estop = False
@@ -130,6 +132,9 @@ class WebControlNode(Node):
         self.pub_throttle = self.create_publisher(Float32, '/vehicle/throttle', 10)
         self.pub_steering = self.create_publisher(Int32, '/vehicle/steering_step', 10)
         self.pub_estop = self.create_publisher(Bool, '/vehicle/emergency_stop', 10)
+
+        period = 1.0 / self.publish_rate_hz
+        self.timer = self.create_timer(period, self.timer_callback)
 
         self.app = Flask(__name__)
         self.setup_routes()
@@ -216,6 +221,9 @@ class WebControlNode(Node):
 
     def run_flask(self):
         self.app.run(host=self.host, port=self.port, debug=False, use_reloader=False)
+
+    def timer_callback(self):
+        self.publish_throttle()
 
 
 def main(args=None):
