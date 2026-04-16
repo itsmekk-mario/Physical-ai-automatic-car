@@ -1,0 +1,6 @@
+experiment_profile_node:
+  ros__parameters:
+    profile_name: camera_only
+    v2x_enabled: false
+    lidar_enabled: false
+    publish_rate_hz: 2.0
