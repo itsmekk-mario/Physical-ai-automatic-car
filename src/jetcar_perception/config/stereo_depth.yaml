@@ -1,0 +1,8 @@
+stereo_depth_node:
+  ros__parameters:
+    baseline_m: 0.06
+    fx_px: 700.0
+    disparity_min_px: 2.0
+    disparity_nominal_px: 42.0
+    safe_stop_distance_m: 0.8
+    publish_rate_hz: 10.0

@@ -24,6 +24,7 @@ setup(
         'console_scripts': [
             'stereo_camera_node = jetcar_perception.stereo_camera_node:main',
             'stereo_rectification_node = jetcar_perception.stereo_rectification_node:main',
+            'stereo_depth_node = jetcar_perception.stereo_depth_node:main',
         ],
     },
 )
