@@ -57,6 +57,7 @@ class VehicleHardwareNode(Node):
         self.motor_max_duty = float(self.get_parameter('motor_max_duty').value)
         self.pca_pwm_freq = float(self.get_parameter('pca_pwm_freq').value)
         self.command_timeout_sec = float(self.get_parameter('command_timeout_sec').value)
+        self.validate_parameters()
 
         self.pca = PCA9685(
             bus_num=self.i2c_bus,
@@ -95,7 +96,72 @@ class VehicleHardwareNode(Node):
             f'min={self.servo_min_tick}, max={self.servo_max_tick}, '
             f'step={self.servo_step_tick}'
         )
+        self.log_configuration()
         self.publish_estop_state()
+
+    def validate_parameters(self):
+        if self.i2c_bus < 0:
+            raise ValueError(f'i2c_bus must be >= 0, got {self.i2c_bus}')
+        if not 0x03 <= int(self.i2c_address) <= 0x77:
+            raise ValueError(f'i2c_address must be a valid 7-bit I2C address, got 0x{int(self.i2c_address):02x}')
+
+        channels = {
+            'steering_channel': self.steering_channel,
+            'left_ena_channel': self.left_ena,
+            'left_in1_channel': self.left_in1,
+            'left_in2_channel': self.left_in2,
+            'right_in3_channel': self.right_in3,
+            'right_in4_channel': self.right_in4,
+            'right_enb_channel': self.right_enb,
+        }
+        invalid_channels = [name for name, channel in channels.items() if not 0 <= int(channel) <= 15]
+        if invalid_channels:
+            raise ValueError(f'PCA9685 channels must be in [0, 15]: {", ".join(invalid_channels)}')
+
+        duplicate_channels = []
+        seen = {}
+        for name, channel in channels.items():
+            channel = int(channel)
+            if channel in seen:
+                duplicate_channels.append(f'{seen[channel]}={channel}, {name}={channel}')
+            else:
+                seen[channel] = name
+        if duplicate_channels:
+            raise ValueError(f'Duplicate PCA9685 channel assignments: {"; ".join(duplicate_channels)}')
+
+        if not self.servo_min_tick < self.servo_center_tick < self.servo_max_tick:
+            raise ValueError(
+                'servo ticks must satisfy servo_min_tick < servo_center_tick < servo_max_tick'
+            )
+        if self.servo_step_tick <= 0:
+            raise ValueError(f'servo_step_tick must be > 0, got {self.servo_step_tick}')
+        if not 0.0 < self.motor_max_duty <= 1.0:
+            raise ValueError(f'motor_max_duty must be in (0.0, 1.0], got {self.motor_max_duty}')
+        if self.pca_pwm_freq <= 0.0:
+            raise ValueError(f'pca_pwm_freq must be > 0, got {self.pca_pwm_freq}')
+        if self.command_timeout_sec <= 0.0:
+            raise ValueError(
+                f'command_timeout_sec must be > 0, got {self.command_timeout_sec}'
+            )
+
+        if abs(self.pca_pwm_freq - 50.0) > 1e-6:
+            self.get_logger().warn(
+                'Using a shared servo/motor PCA9685 at a non-50Hz frequency can destabilize steering.'
+            )
+
+    def log_configuration(self):
+        self.get_logger().info(
+            'hardware config | '
+            f'i2c_bus={self.i2c_bus}, address=0x{int(self.i2c_address):02x}, '
+            f'pwm_freq={self.pca_pwm_freq}, motor_max_duty={self.motor_max_duty:.2f}, '
+            f'timeout={self.command_timeout_sec:.2f}'
+        )
+        self.get_logger().info(
+            'channel map | '
+            f'steering={self.steering_channel}, '
+            f'left=({self.left_ena},{self.left_in1},{self.left_in2}), '
+            f'right=({self.right_in3},{self.right_in4},{self.right_enb})'
+        )
 
     def publish_state(self, text: str):
         msg = String()

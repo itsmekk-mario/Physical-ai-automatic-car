@@ -8,7 +8,6 @@ from launch_ros.actions import Node
 def generate_launch_description():
     package_share = get_package_share_directory('jetcar_base')
     vehicle_hw_config = os.path.join(package_share, 'config', 'vehicle_hw.yaml')
-    keyboard_config = os.path.join(package_share, 'config', 'manual_keyboard.yaml')
 
     return LaunchDescription([
         Node(
@@ -17,13 +16,5 @@ def generate_launch_description():
             name='vehicle_hw_node',
             output='screen',
             parameters=[vehicle_hw_config],
-        ),
-        Node(
-            package='jetcar_base',
-            executable='keyboard_control_node',
-            name='keyboard_control_node',
-            output='screen',
-            emulate_tty=True,
-            parameters=[keyboard_config],
         ),
     ])

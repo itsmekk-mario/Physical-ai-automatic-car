@@ -1,0 +1,5 @@
+keyboard_control_node:
+  ros__parameters:
+    throttle_step: 0.1
+    publish_rate_hz: 10.0
+    steering_step_cmd: 0.1

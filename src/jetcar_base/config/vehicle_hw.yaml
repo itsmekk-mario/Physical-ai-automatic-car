@@ -1,0 +1,20 @@
+vehicle_hw_node:
+  ros__parameters:
+    i2c_bus: 7
+    i2c_address: 64
+    steering_channel: 0
+    servo_center_tick: 323
+    servo_min_tick: 236
+    servo_max_tick: 410
+    servo_step_tick: 3
+    left_ena_channel: 1
+    left_in1_channel: 2
+    left_in2_channel: 3
+    right_in3_channel: 4
+    right_in4_channel: 5
+    right_enb_channel: 6
+    motor_max_duty: 0.8
+    pca_pwm_freq: 50.0
+    command_timeout_sec: 0.7
+    recenter_on_estop: true
+    recenter_on_timeout: true
