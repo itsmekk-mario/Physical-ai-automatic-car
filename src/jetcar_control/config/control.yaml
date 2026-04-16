@@ -1,0 +1,9 @@
+drive_mode_manager_node:
+  ros__parameters:
+    default_mode: MANUAL
+    publish_rate_hz: 5.0
+
+control_mux_node:
+  ros__parameters:
+    default_mode: MANUAL
+    publish_rate_hz: 10.0

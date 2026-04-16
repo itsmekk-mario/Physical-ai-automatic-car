@@ -37,9 +37,9 @@ class KeyboardControlNode(Node):
         self.publish_rate_hz = float(self.get_parameter('publish_rate_hz').value)
         self.steering_step_cmd = float(self.get_parameter('steering_step_cmd').value)
 
-        self.pub_throttle = self.create_publisher(Float32, '/vehicle/throttle', 10)
-        self.pub_steering = self.create_publisher(Float32, '/vehicle/steering', 10)
-        self.pub_estop = self.create_publisher(Bool, '/vehicle/emergency_stop', 10)
+        self.pub_throttle = self.create_publisher(Float32, '/input/manual/throttle', 10)
+        self.pub_steering = self.create_publisher(Float32, '/input/manual/steering', 10)
+        self.pub_estop = self.create_publisher(Bool, '/system/estop_cmd', 10)
         self.sub_estop_state = self.create_subscription(
             Bool, '/vehicle/emergency_stop_state', self.estop_state_callback, 10
         )
@@ -98,7 +98,7 @@ class KeyboardControlNode(Node):
     def handle_key(self, key: str):
         if key == 'w':
             if self.estop:
-                print('[INFO] E-stop is ON. Release it with e first.')
+                print('[INFO] E-stop is ON. Release it with r first.')
                 return
             self.current_throttle += self.throttle_step
             self.clamp_throttle()
@@ -108,7 +108,7 @@ class KeyboardControlNode(Node):
 
         elif key == 's':
             if self.estop:
-                print('[INFO] E-stop is ON. Release it with e first.')
+                print('[INFO] E-stop is ON. Release it with r first.')
                 return
             self.current_throttle -= self.throttle_step
             self.clamp_throttle()
@@ -196,7 +196,7 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        stop_pub = node.create_publisher(Float32, '/vehicle/throttle', 10)
+        stop_pub = node.create_publisher(Float32, '/input/manual/throttle', 10)
         stop_msg = Float32()
         stop_msg.data = 0.0
         for _ in range(3):

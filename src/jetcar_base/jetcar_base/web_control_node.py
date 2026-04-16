@@ -137,9 +137,9 @@ class WebControlNode(Node):
         self.command_queue = deque()
         self.command_lock = threading.Lock()
 
-        self.pub_throttle = self.create_publisher(Float32, '/vehicle/throttle', 10)
-        self.pub_steering = self.create_publisher(Float32, '/vehicle/steering', 10)
-        self.pub_estop = self.create_publisher(Bool, '/vehicle/emergency_stop', 10)
+        self.pub_throttle = self.create_publisher(Float32, '/input/manual/throttle', 10)
+        self.pub_steering = self.create_publisher(Float32, '/input/manual/steering', 10)
+        self.pub_estop = self.create_publisher(Bool, '/system/estop_cmd', 10)
         self.sub_estop_state = self.create_subscription(
             Bool, '/vehicle/emergency_stop_state', self.estop_state_callback, 10
         )
