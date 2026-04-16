@@ -1,0 +1,15 @@
+stereo_camera_node:
+  ros__parameters:
+    left_camera_name: left_imx219
+    right_camera_name: right_imx219
+    left_frame_id: stereo_left_optical_frame
+    right_frame_id: stereo_right_optical_frame
+    left_topic: /sensors/stereo/left/image_raw
+    right_topic: /sensors/stereo/right/image_raw
+    flip_horizontal: false
+    flip_vertical: true
+    image_width: 1280
+    image_height: 720
+    fps: 30.0
+    baseline_m: 0.06
+    publish_rate_hz: 2.0
