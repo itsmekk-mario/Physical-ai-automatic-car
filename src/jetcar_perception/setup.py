@@ -26,6 +26,7 @@ setup(
             'stereo_rectification_node = jetcar_perception.stereo_rectification_node:main',
             'stereo_depth_node = jetcar_perception.stereo_depth_node:main',
             'object_detection_node = jetcar_perception.object_detection_node:main',
+            'lane_detection_node = jetcar_perception.lane_detection_node:main',
         ],
     },
 )

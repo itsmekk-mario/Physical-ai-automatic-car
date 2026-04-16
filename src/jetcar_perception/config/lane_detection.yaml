@@ -1,0 +1,7 @@
+lane_detection_node:
+  ros__parameters:
+    publish_rate_hz: 10.0
+    lane_center_offset_m: 0.0
+    heading_error_deg: 0.0
+    lane_confidence: 0.9
+    assist_gain: 0.7
