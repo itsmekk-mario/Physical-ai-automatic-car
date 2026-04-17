@@ -1,0 +1,16 @@
+yolo_web_node:
+  ros__parameters:
+    host: 0.0.0.0
+    port: 8080
+    camera_source: "0"
+    model_path: models/yolov8n.engine
+    target_classes:
+      - person
+      - car
+      - stop sign
+    confidence_threshold: 0.4
+    image_size: 640
+    publish_rate_hz: 5.0
+    jpeg_quality: 80
+    camera_width: 1280
+    camera_height: 720
