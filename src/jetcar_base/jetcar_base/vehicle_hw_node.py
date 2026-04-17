@@ -18,7 +18,8 @@ class VehicleHardwareNode(Node):
         self.declare_parameter('servo_min_tick', 285)
         self.declare_parameter('servo_max_tick', 361)
         self.declare_parameter('servo_step_tick', 2)
-        self.declare_parameter('servo_slew_tick_per_update', 2)
+        self.declare_parameter('servo_slew_tick_per_update', 4)
+        self.declare_parameter('servo_update_period_sec', 0.02)
         self.declare_parameter('servo_write_deadband_tick', 1)
         self.declare_parameter('recenter_on_estop', True)
         self.declare_parameter('recenter_on_timeout', True)
@@ -46,6 +47,7 @@ class VehicleHardwareNode(Node):
         self.servo_max_tick = int(self.get_parameter('servo_max_tick').value)
         self.servo_step_tick = int(self.get_parameter('servo_step_tick').value)
         self.servo_slew_tick_per_update = int(self.get_parameter('servo_slew_tick_per_update').value)
+        self.servo_update_period_sec = float(self.get_parameter('servo_update_period_sec').value)
         self.servo_write_deadband_tick = int(self.get_parameter('servo_write_deadband_tick').value)
         self.recenter_on_estop = bool(self.get_parameter('recenter_on_estop').value)
         self.recenter_on_timeout = bool(self.get_parameter('recenter_on_timeout').value)
@@ -91,7 +93,7 @@ class VehicleHardwareNode(Node):
 
         self.pub_state = self.create_publisher(String, '/vehicle/state', 10)
         self.pub_estop_state = self.create_publisher(Bool, '/vehicle/emergency_stop_state', 10)
-        self.timer = self.create_timer(0.05, self.timer_callback)
+        self.timer = self.create_timer(self.servo_update_period_sec, self.timer_callback)
 
         self.write_steering_tick(self.servo_center_tick, force=True)
         self.stop_all()
@@ -100,7 +102,8 @@ class VehicleHardwareNode(Node):
             f'vehicle_hw_node started | '
             f'servo center={self.servo_center_tick}, '
             f'min={self.servo_min_tick}, max={self.servo_max_tick}, '
-            f'step={self.servo_step_tick}, slew={self.servo_slew_tick_per_update}'
+            f'step={self.servo_step_tick}, slew={self.servo_slew_tick_per_update}, '
+            f'period={self.servo_update_period_sec:.3f}s'
         )
         self.log_configuration()
         self.publish_estop_state()
@@ -144,6 +147,10 @@ class VehicleHardwareNode(Node):
         if self.servo_slew_tick_per_update <= 0:
             raise ValueError(
                 f'servo_slew_tick_per_update must be > 0, got {self.servo_slew_tick_per_update}'
+            )
+        if self.servo_update_period_sec <= 0.0:
+            raise ValueError(
+                f'servo_update_period_sec must be > 0, got {self.servo_update_period_sec}'
             )
         if self.servo_write_deadband_tick < 0:
             raise ValueError(

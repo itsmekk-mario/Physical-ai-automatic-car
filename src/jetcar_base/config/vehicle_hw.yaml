@@ -7,7 +7,8 @@ vehicle_hw_node:
     servo_min_tick: 285
     servo_max_tick: 361
     servo_step_tick: 2
-    servo_slew_tick_per_update: 2
+    servo_slew_tick_per_update: 4
+    servo_update_period_sec: 0.02
     servo_write_deadband_tick: 1
     left_ena_channel: 1
     left_in1_channel: 2
