@@ -47,6 +47,10 @@ Add a YOLO model file before expecting detections. Put one of these files in the
 /home/kown/jetcar_ws/models/yolov8n.pt
 ```
 
+If no local file is present, `model_path: auto` falls back to `yolov8n.pt` so
+Ultralytics can use its cache or download the default model. For offline use,
+put the `.pt` or `.engine` file in `/home/kown/jetcar_ws/models`.
+
 Run YOLO detection with MJPEG web streaming:
 
 ```bash
@@ -78,4 +82,4 @@ camera_source: csi
 camera_sensor_id: 0
 ```
 
-If the web page says `YOLO model unavailable`, check that `ultralytics` is installed and that a model file exists. The default `model_path: auto` looks for `models/yolov8n.engine`, `yolov8n.engine`, `models/yolov8n.pt`, and `yolov8n.pt`.
+If the web page says `YOLO model unavailable`, check that `ultralytics` is installed and that a model file exists or the Jetson has network access for the first `yolov8n.pt` download. The default `model_path: auto` checks `/home/kown/jetcar_ws/models`, the current launch directory, and the installed package share before falling back to Ultralytics' default `yolov8n.pt`.

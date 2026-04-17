@@ -14,9 +14,13 @@ yolo_web_node:
       - car
       - stop sign
     confidence_threshold: 0.4
-    image_size: 640
-    publish_rate_hz: 5.0
-    jpeg_quality: 80
+    image_size: 416
+    publish_rate_hz: 10.0
+    jpeg_quality: 65
     camera_width: 1280
     camera_height: 720
-    camera_fps: 30
+    camera_fps: 60
+    stream_width: 640
+    stream_height: 360
+    stream_delay_ms: 5
+    detection_rate_hz: 8.0
