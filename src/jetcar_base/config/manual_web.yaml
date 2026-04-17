@@ -3,5 +3,5 @@ web_control_node:
     host: 0.0.0.0
     port: 5000
     throttle_step: 0.1
-    steering_step_cmd: 0.1
-    publish_rate_hz: 10.0
+    steering_step_cmd: 0.2
+    publish_rate_hz: 20.0

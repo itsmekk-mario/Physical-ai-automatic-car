@@ -76,22 +76,22 @@ HTML_PAGE = """
 
     <div class="grid">
         <div></div>
-        <button onclick="sendCommand('w')">W</button>
+        <button data-key="w">W</button>
         <div></div>
 
-        <button onclick="sendCommand('a')">A</button>
-        <button class="stop" onclick="sendCommand('x')">X</button>
-        <button onclick="sendCommand('d')">D</button>
+        <button data-key="a">A</button>
+        <button class="stop" data-key="x">X</button>
+        <button data-key="d">D</button>
 
         <div></div>
-        <button onclick="sendCommand('s')">S</button>
+        <button data-key="s">S</button>
         <div></div>
     </div>
 
     <div style="margin-top:20px;">
-        <button class="danger" onclick="sendCommand('e')">E-STOP</button>
-        <button onclick="sendCommand('r')">RELEASE</button>
-        <button onclick="sendCommand('c')">CENTER</button>
+        <button class="danger" data-key="e">E-STOP</button>
+        <button data-key="r">RELEASE</button>
+        <button data-key="c">CENTER</button>
     </div>
 
     <script>
@@ -103,11 +103,60 @@ HTML_PAGE = """
             });
         }
 
-        document.addEventListener('keydown', function(event) {
-            const key = event.key.toLowerCase();
-            if (['w', 'a', 's', 'd', 'x', 'e', 'r', 'c'].includes(key)) {
+        const repeatKeys = new Set(['w', 'a', 's', 'd']);
+        const singleKeys = new Set(['x', 'e', 'r', 'c']);
+        const activeKeys = new Set();
+
+        function pressKey(key) {
+            if (repeatKeys.has(key)) {
+                if (!activeKeys.has(key)) {
+                    activeKeys.add(key);
+                    sendCommand(key);
+                }
+            } else if (singleKeys.has(key)) {
                 sendCommand(key);
             }
+        }
+
+        function releaseKey(key) {
+            activeKeys.delete(key);
+        }
+
+        setInterval(function() {
+            activeKeys.forEach(function(key) {
+                sendCommand(key);
+            });
+        }, 50);
+
+        document.addEventListener('keydown', function(event) {
+            const key = event.key.toLowerCase();
+            if (repeatKeys.has(key) || singleKeys.has(key)) {
+                event.preventDefault();
+                pressKey(key);
+            }
+        });
+
+        document.addEventListener('keyup', function(event) {
+            releaseKey(event.key.toLowerCase());
+        });
+
+        document.querySelectorAll('button[data-key]').forEach(function(button) {
+            const key = button.dataset.key;
+            button.addEventListener('pointerdown', function(event) {
+                event.preventDefault();
+                pressKey(key);
+                button.setPointerCapture(event.pointerId);
+            });
+            button.addEventListener('pointerup', function(event) {
+                event.preventDefault();
+                releaseKey(key);
+            });
+            button.addEventListener('pointercancel', function() {
+                releaseKey(key);
+            });
+            button.addEventListener('pointerleave', function() {
+                releaseKey(key);
+            });
         });
     </script>
 </body>
@@ -122,8 +171,8 @@ class WebControlNode(Node):
         self.declare_parameter('host', '0.0.0.0')
         self.declare_parameter('port', 5000)
         self.declare_parameter('throttle_step', 0.1)
-        self.declare_parameter('steering_step_cmd', 0.1)
-        self.declare_parameter('publish_rate_hz', 10.0)
+        self.declare_parameter('steering_step_cmd', 0.2)
+        self.declare_parameter('publish_rate_hz', 20.0)
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)

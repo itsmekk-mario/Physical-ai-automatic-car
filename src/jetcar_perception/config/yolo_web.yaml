@@ -2,9 +2,9 @@ yolo_web_node:
   ros__parameters:
     host: 0.0.0.0
     port: 8080
-    # Use "csi" for Jetson CSI cameras through nvarguscamerasrc.
-    # Use "0" or another device index for a USB V4L2 camera.
-    camera_source: csi
+    # Use "auto" to try CSI sensor 0/1, then USB V4L2 /dev/video0/1.
+    # Use "csi" to force Jetson nvarguscamerasrc, or "0" for a USB camera.
+    camera_source: auto
     camera_backend: auto
     camera_sensor_id: 0
     camera_flip_method: 0

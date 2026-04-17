@@ -81,7 +81,7 @@ class YoloWebNode(Node):
 
         self.declare_parameter('host', '0.0.0.0')
         self.declare_parameter('port', 8080)
-        self.declare_parameter('camera_source', 'csi')
+        self.declare_parameter('camera_source', 'auto')
         self.declare_parameter('camera_backend', 'auto')
         self.declare_parameter('camera_sensor_id', 0)
         self.declare_parameter('camera_flip_method', 0)
@@ -127,6 +127,7 @@ class YoloWebNode(Node):
         self.model_error = ''
         self.active_model_path = ''
         self.active_camera_source = ''
+        self.pending_frame = None
         self.stop_event = threading.Event()
 
         self.model = self.load_model()
@@ -181,9 +182,11 @@ class YoloWebNode(Node):
             'or set model_path in yolo_web.yaml'
         )
 
-    def make_csi_pipeline(self):
+    def make_csi_pipeline(self, sensor_id=None):
+        if sensor_id is None:
+            sensor_id = self.camera_sensor_id
         return (
-            f'nvarguscamerasrc sensor-id={self.camera_sensor_id} ! '
+            f'nvarguscamerasrc sensor-id={sensor_id} ! '
             f'video/x-raw(memory:NVMM), width={self.camera_width}, height={self.camera_height}, '
             f'framerate={self.camera_fps}/1, format=NV12 ! '
             f'nvvidconv flip-method={self.camera_flip_method} ! '
@@ -192,39 +195,102 @@ class YoloWebNode(Node):
         )
 
     def open_capture(self):
-        source = self.camera_source
+        errors = []
+        for source in self.camera_candidates():
+            capture, active_source = self.open_capture_candidate(source)
+            if not capture.isOpened():
+                errors.append(f'{active_source}: not opened')
+                capture.release()
+                continue
+
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                errors.append(f'{active_source}: no frame')
+                capture.release()
+                continue
+
+            self.pending_frame = frame
+            self.active_camera_source = active_source
+            self.get_logger().info(f'camera opened: {active_source}')
+            return capture
+
+        self.active_camera_source = '; '.join(errors) if errors else self.camera_source
+        return cv2.VideoCapture()
+
+    def camera_candidates(self):
+        source = self.camera_source.lower().strip()
+        if source == 'auto':
+            return [
+                ('csi', self.camera_sensor_id),
+                ('csi', 1 if self.camera_sensor_id == 0 else 0),
+                '0',
+                '1',
+            ]
+        return [self.camera_source]
+
+    def open_capture_candidate(self, source):
+        if isinstance(source, tuple) and source[0] == 'csi':
+            pipeline = self.make_csi_pipeline(sensor_id=source[1])
+            return cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER), pipeline
+
+        source = str(source)
         if source.lower() in ('csi', 'nvargus', 'nvarguscamerasrc'):
             pipeline = self.make_csi_pipeline()
-            self.active_camera_source = pipeline
-            capture = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-        elif '!' in source or self.camera_backend == 'gstreamer':
-            self.active_camera_source = source
-            capture = cv2.VideoCapture(source, cv2.CAP_GSTREAMER)
-        elif source.isdigit():
-            self.active_camera_source = source
+            return cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER), pipeline
+        if '!' in source or self.camera_backend == 'gstreamer':
+            return cv2.VideoCapture(source, cv2.CAP_GSTREAMER), source
+        if source.isdigit():
             capture = cv2.VideoCapture(int(source))
-        else:
-            self.active_camera_source = source
-            capture = cv2.VideoCapture(source)
+            capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+            capture.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+            if self.camera_width > 0:
+                capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_width)
+            if self.camera_height > 0:
+                capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_height)
+            if self.camera_fps > 0:
+                capture.set(cv2.CAP_PROP_FPS, self.camera_fps)
+            return capture, f'/dev/video{source}'
+
+        capture = cv2.VideoCapture(source)
+        self.apply_capture_size(capture)
+        return capture, source
+
+    def read_frame(self, capture):
+        if self.pending_frame is not None:
+            frame = self.pending_frame
+            self.pending_frame = None
+            return True, frame
+        return capture.read()
+
+    def make_capture_unavailable_text(self):
+        if self.camera_source.lower().strip() == 'auto':
+            return f'Camera unavailable after trying: {self.active_camera_source}'
+        if self.active_camera_source:
+            return f'Camera unavailable: {self.active_camera_source}'
+        return f'Camera unavailable: {self.camera_source}'
+
+    def apply_capture_size(self, capture):
         if self.camera_width > 0:
             capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_width)
         if self.camera_height > 0:
             capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_height)
-        return capture
+        if self.camera_fps > 0:
+            capture.set(cv2.CAP_PROP_FPS, self.camera_fps)
 
     def capture_loop(self):
         capture = self.open_capture()
         if not capture.isOpened():
-            jpeg = self.encode_frame(self.make_status_frame(f'Camera unavailable: {self.camera_source}'))
+            status = self.make_capture_unavailable_text()
+            jpeg = self.encode_frame(self.make_status_frame(status))
             with self.frame_lock:
-                self.latest_status = f'camera unavailable: {self.active_camera_source or self.camera_source}'
+                self.latest_status = status
                 self.latest_jpeg = jpeg
             self.get_logger().error(self.latest_status)
             return
 
         last_time = time.monotonic()
         while not self.stop_event.is_set():
-            ok, frame = capture.read()
+            ok, frame = self.read_frame(capture)
             if not ok or frame is None:
                 with self.frame_lock:
                     self.latest_ready = False

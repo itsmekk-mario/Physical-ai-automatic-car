@@ -63,12 +63,19 @@ ssh -L 8080:localhost:8080 kown@JETCAR_IP
 
 Then open `http://localhost:8080`.
 
-The default camera source is `csi`, which uses Jetson `nvarguscamerasrc` and converts the frame to BGR for OpenCV. This avoids the all-green raw camera view that can happen when a CSI camera is opened as plain `/dev/video0`.
+The default camera source is `auto`. It tries Jetson CSI camera sensor 0, CSI camera sensor 1, USB `/dev/video0`, then USB `/dev/video1`. CSI inputs use `nvarguscamerasrc` and convert the frame to BGR for OpenCV. USB inputs request MJPEG/RGB conversion to avoid the all-green raw camera view that can happen when a camera is opened with the wrong format.
 
-For a USB camera, change `camera_source` in `src/jetcar_perception/config/yolo_web.yaml`:
+To force a USB camera, change `camera_source` in `src/jetcar_perception/config/yolo_web.yaml`:
 
 ```yaml
 camera_source: "0"
+```
+
+To force a CSI camera:
+
+```yaml
+camera_source: csi
+camera_sensor_id: 0
 ```
 
 If the web page says `YOLO model unavailable`, check that `ultralytics` is installed and that a model file exists. The default `model_path: auto` looks for `models/yolov8n.engine`, `yolov8n.engine`, `models/yolov8n.pt`, and `yolov8n.pt`.
