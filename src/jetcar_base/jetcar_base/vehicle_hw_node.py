@@ -15,9 +15,11 @@ class VehicleHardwareNode(Node):
         # steering servo (raw tick)
         self.declare_parameter('steering_channel', 0)
         self.declare_parameter('servo_center_tick', 323)
-        self.declare_parameter('servo_min_tick', 236)
-        self.declare_parameter('servo_max_tick', 410)
-        self.declare_parameter('servo_step_tick', 3)
+        self.declare_parameter('servo_min_tick', 285)
+        self.declare_parameter('servo_max_tick', 361)
+        self.declare_parameter('servo_step_tick', 2)
+        self.declare_parameter('servo_slew_tick_per_update', 2)
+        self.declare_parameter('servo_write_deadband_tick', 1)
         self.declare_parameter('recenter_on_estop', True)
         self.declare_parameter('recenter_on_timeout', True)
 
@@ -43,6 +45,8 @@ class VehicleHardwareNode(Node):
         self.servo_min_tick = int(self.get_parameter('servo_min_tick').value)
         self.servo_max_tick = int(self.get_parameter('servo_max_tick').value)
         self.servo_step_tick = int(self.get_parameter('servo_step_tick').value)
+        self.servo_slew_tick_per_update = int(self.get_parameter('servo_slew_tick_per_update').value)
+        self.servo_write_deadband_tick = int(self.get_parameter('servo_write_deadband_tick').value)
         self.recenter_on_estop = bool(self.get_parameter('recenter_on_estop').value)
         self.recenter_on_timeout = bool(self.get_parameter('recenter_on_timeout').value)
 
@@ -66,6 +70,8 @@ class VehicleHardwareNode(Node):
         )
 
         self.current_servo_tick = self.servo_center_tick
+        self.target_servo_tick = self.servo_center_tick
+        self.last_written_servo_tick = None
         self.current_throttle = 0.0
         self.estop = False
         self.last_cmd_time = self.get_clock().now()
@@ -87,14 +93,14 @@ class VehicleHardwareNode(Node):
         self.pub_estop_state = self.create_publisher(Bool, '/vehicle/emergency_stop_state', 10)
         self.timer = self.create_timer(0.05, self.timer_callback)
 
-        self.set_steering_tick(self.servo_center_tick)
+        self.write_steering_tick(self.servo_center_tick, force=True)
         self.stop_all()
 
         self.get_logger().info(
             f'vehicle_hw_node started | '
             f'servo center={self.servo_center_tick}, '
             f'min={self.servo_min_tick}, max={self.servo_max_tick}, '
-            f'step={self.servo_step_tick}'
+            f'step={self.servo_step_tick}, slew={self.servo_slew_tick_per_update}'
         )
         self.log_configuration()
         self.publish_estop_state()
@@ -135,6 +141,14 @@ class VehicleHardwareNode(Node):
             )
         if self.servo_step_tick <= 0:
             raise ValueError(f'servo_step_tick must be > 0, got {self.servo_step_tick}')
+        if self.servo_slew_tick_per_update <= 0:
+            raise ValueError(
+                f'servo_slew_tick_per_update must be > 0, got {self.servo_slew_tick_per_update}'
+            )
+        if self.servo_write_deadband_tick < 0:
+            raise ValueError(
+                f'servo_write_deadband_tick must be >= 0, got {self.servo_write_deadband_tick}'
+            )
         if not 0.0 < self.motor_max_duty <= 1.0:
             raise ValueError(f'motor_max_duty must be in (0.0, 1.0], got {self.motor_max_duty}')
         if self.pca_pwm_freq <= 0.0:
@@ -178,12 +192,28 @@ class VehicleHardwareNode(Node):
         off = int(duty * 4095)
         self.pca.set_pwm(channel, 0, off)
 
-    def set_steering_tick(self, tick: int):
+    def clamp_steering_tick(self, tick: int) -> int:
         tick = int(tick)
-        tick = max(self.servo_min_tick, min(self.servo_max_tick, tick))
+        return max(self.servo_min_tick, min(self.servo_max_tick, tick))
+
+    def write_steering_tick(self, tick: int, force: bool = False):
+        tick = self.clamp_steering_tick(tick)
+        if (
+            not force
+            and self.last_written_servo_tick is not None
+            and abs(tick - self.last_written_servo_tick) < self.servo_write_deadband_tick
+        ):
+            return
         self.current_servo_tick = tick
+        self.last_written_servo_tick = tick
         self.pca.set_pwm(self.steering_channel, 0, self.current_servo_tick)
-        self.get_logger().info(f'steering_tick={self.current_servo_tick}')
+        self.get_logger().debug(f'steering_tick={self.current_servo_tick}')
+
+    def set_steering_tick(self, tick: int):
+        target = self.clamp_steering_tick(tick)
+        if target != self.target_servo_tick:
+            self.target_servo_tick = target
+            self.get_logger().info(f'steering_target_tick={self.target_servo_tick}')
 
     def set_steering_normalized(self, value: float):
         value = max(-1.0, min(1.0, float(value)))
@@ -192,6 +222,16 @@ class VehicleHardwareNode(Node):
         else:
             tick = self.servo_center_tick + value * (self.servo_center_tick - self.servo_min_tick)
         self.set_steering_tick(int(round(tick)))
+
+    def update_steering(self):
+        if self.current_servo_tick == self.target_servo_tick:
+            return
+
+        delta = self.target_servo_tick - self.current_servo_tick
+        step = min(abs(delta), self.servo_slew_tick_per_update)
+        if delta < 0:
+            step = -step
+        self.write_steering_tick(self.current_servo_tick + step)
 
     def set_left_motor(self, throttle: float):
         throttle = max(-1.0, min(1.0, throttle))
@@ -283,13 +323,15 @@ class VehicleHardwareNode(Node):
         self.publish_estop_state()
 
     def timer_callback(self):
+        self.update_steering()
+
         dt = (self.get_clock().now() - self.last_cmd_time).nanoseconds / 1e9
         if dt > self.command_timeout_sec:
             timed_out = False
             if abs(self.current_throttle) > 1e-4:
                 self.stop_all()
                 timed_out = True
-            if self.recenter_on_timeout and self.current_servo_tick != self.servo_center_tick:
+            if self.recenter_on_timeout and self.target_servo_tick != self.servo_center_tick:
                 self.set_steering_tick(self.servo_center_tick)
                 timed_out = True
             if timed_out:
@@ -298,7 +340,8 @@ class VehicleHardwareNode(Node):
     def destroy_node(self):
         try:
             self.stop_all()
-            self.set_steering_tick(self.servo_center_tick)
+            self.target_servo_tick = self.servo_center_tick
+            self.write_steering_tick(self.servo_center_tick, force=True)
             self.pca.close()
         except Exception as e:
             self.get_logger().error(f'cleanup error: {e}')
