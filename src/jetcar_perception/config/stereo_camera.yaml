@@ -6,6 +6,10 @@ stereo_camera_node:
     right_frame_id: stereo_right_optical_frame
     left_topic: /sensors/stereo/left/image_raw
     right_topic: /sensors/stereo/right/image_raw
+    left_camera_source: csi:0
+    right_camera_source: csi:1
+    camera_backend: auto
+    camera_flip_method: 0
     flip_horizontal: false
     flip_vertical: true
     image_width: 1280

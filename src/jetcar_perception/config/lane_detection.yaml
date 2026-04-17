@@ -5,3 +5,8 @@ lane_detection_node:
     heading_error_deg: 0.0
     lane_confidence: 0.9
     assist_gain: 0.7
+    image_topic: /sensors/stereo/left/image_raw
+    meters_per_pixel: 0.0025
+    roi_top_fraction: 0.55
+    min_lane_pixels: 150
+    max_frame_age_sec: 0.5

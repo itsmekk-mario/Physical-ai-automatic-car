@@ -6,3 +6,12 @@ stereo_depth_node:
     disparity_nominal_px: 42.0
     safe_stop_distance_m: 0.8
     publish_rate_hz: 10.0
+    left_image_topic: /sensors/stereo/left/image_raw
+    right_image_topic: /sensors/stereo/right/image_raw
+    max_frame_age_sec: 0.5
+    stereo_num_disparities: 96
+    stereo_block_size: 7
+    roi_top_fraction: 0.45
+    roi_bottom_fraction: 0.95
+    roi_left_fraction: 0.25
+    roi_right_fraction: 0.75
