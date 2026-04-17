@@ -27,7 +27,7 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 os.path.join(control_share, 'config', 'control.yaml'),
-                {'default_mode': 'AUTONOMOUS'},
+                {'default_mode': 'MANUAL'},
             ],
         ),
         Node(
@@ -37,7 +37,7 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 os.path.join(control_share, 'config', 'control.yaml'),
-                {'default_mode': 'AUTONOMOUS'},
+                {'default_mode': 'MANUAL'},
             ],
         ),
         Node(

@@ -7,3 +7,7 @@ control_mux_node:
   ros__parameters:
     default_mode: MANUAL
     publish_rate_hz: 10.0
+    input_timeout_sec: 0.5
+    manual_max_throttle: 0.35
+    ai_max_throttle: 0.15
+    autonomy_max_throttle: 0.10

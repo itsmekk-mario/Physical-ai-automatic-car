@@ -16,7 +16,7 @@ vehicle_hw_node:
     right_in3_channel: 4
     right_in4_channel: 5
     right_enb_channel: 6
-    motor_max_duty: 0.8
+    motor_max_duty: 0.45
     pca_pwm_freq: 50.0
     command_timeout_sec: 0.7
     recenter_on_estop: true

@@ -11,10 +11,34 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-Run the full autonomous experiment:
+Run the full autonomous stack. It now starts in `MANUAL` with autonomy disabled,
+so launching it should not immediately drive the motors:
 
 ```bash
 ros2 launch jetcar_research full_autonomous.launch.py
+```
+
+Before arming autonomy, keep the wheels off the ground and check status topics:
+
+```bash
+ros2 topic echo /autonomy/status
+ros2 topic echo /system/selected_control_source
+ros2 topic echo /vehicle/state
+```
+
+Arm autonomy only after the status is stable:
+
+```bash
+ros2 topic pub --once /system/autonomy_enable std_msgs/msg/Bool "{data: true}"
+ros2 topic pub --once /system/drive_mode_cmd std_msgs/msg/String "{data: AUTONOMOUS}"
+```
+
+To immediately return to safe manual output:
+
+```bash
+ros2 topic pub --once /system/autonomy_enable std_msgs/msg/Bool "{data: false}"
+ros2 topic pub --once /system/drive_mode_cmd std_msgs/msg/String "{data: MANUAL}"
+ros2 topic pub --once /system/estop_cmd std_msgs/msg/Bool "{data: true}"
 ```
 
 Run the manual web controller:
