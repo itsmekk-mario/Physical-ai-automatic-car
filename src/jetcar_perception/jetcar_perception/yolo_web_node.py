@@ -1,5 +1,6 @@
 import threading
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -63,7 +64,8 @@ HTML_PAGE = """
             const data = await response.json();
             document.getElementById('status').textContent =
                 `ready=${data.ready} model=${data.model_loaded} fps=${data.fps.toFixed(1)} ` +
-                `detections=${data.detection_count} hazard=${data.hazard} status=${data.status}`;
+                `detections=${data.detection_count} hazard=${data.hazard} ` +
+                `model_path=${data.model_path} camera=${data.camera_source} status=${data.status}`;
         }
         setInterval(refreshStatus, 1000);
         refreshStatus();
@@ -79,8 +81,11 @@ class YoloWebNode(Node):
 
         self.declare_parameter('host', '0.0.0.0')
         self.declare_parameter('port', 8080)
-        self.declare_parameter('camera_source', '0')
-        self.declare_parameter('model_path', 'models/yolov8n.engine')
+        self.declare_parameter('camera_source', 'csi')
+        self.declare_parameter('camera_backend', 'auto')
+        self.declare_parameter('camera_sensor_id', 0)
+        self.declare_parameter('camera_flip_method', 0)
+        self.declare_parameter('model_path', 'auto')
         self.declare_parameter('target_classes', ['person', 'car', 'stop sign'])
         self.declare_parameter('confidence_threshold', 0.4)
         self.declare_parameter('image_size', 640)
@@ -88,10 +93,14 @@ class YoloWebNode(Node):
         self.declare_parameter('jpeg_quality', 80)
         self.declare_parameter('camera_width', 1280)
         self.declare_parameter('camera_height', 720)
+        self.declare_parameter('camera_fps', 30)
 
         self.host = str(self.get_parameter('host').value)
         self.port = int(self.get_parameter('port').value)
         self.camera_source = str(self.get_parameter('camera_source').value)
+        self.camera_backend = str(self.get_parameter('camera_backend').value).lower().strip()
+        self.camera_sensor_id = int(self.get_parameter('camera_sensor_id').value)
+        self.camera_flip_method = int(self.get_parameter('camera_flip_method').value)
         self.model_path = str(self.get_parameter('model_path').value)
         self.target_classes = [str(name) for name in self.get_parameter('target_classes').value]
         self.confidence_threshold = float(self.get_parameter('confidence_threshold').value)
@@ -99,6 +108,7 @@ class YoloWebNode(Node):
         self.jpeg_quality = int(self.get_parameter('jpeg_quality').value)
         self.camera_width = int(self.get_parameter('camera_width').value)
         self.camera_height = int(self.get_parameter('camera_height').value)
+        self.camera_fps = int(self.get_parameter('camera_fps').value)
 
         self.ready_pub = self.create_publisher(Bool, '/perception/detections/ready', 10)
         self.hazard_pub = self.create_publisher(Bool, '/perception/detections/hazard', 10)
@@ -114,6 +124,9 @@ class YoloWebNode(Node):
         self.latest_ready = False
         self.latest_fps = 0.0
         self.model_loaded = False
+        self.model_error = ''
+        self.active_model_path = ''
+        self.active_camera_source = ''
         self.stop_event = threading.Event()
 
         self.model = self.load_model()
@@ -137,23 +150,61 @@ class YoloWebNode(Node):
         try:
             from ultralytics import YOLO
 
-            model = YOLO(self.model_path)
+            model_path = self.resolve_model_path()
+            model = YOLO(model_path)
             self.model_loaded = True
+            self.active_model_path = model_path
             self.latest_status = 'model loaded'
             return model
         except Exception as exc:
             self.model_loaded = False
-            self.latest_status = f'model unavailable: {exc}'
+            self.model_error = str(exc)
+            self.latest_status = f'model unavailable: {self.model_error}'
             self.get_logger().warning(self.latest_status)
             return None
 
+    def resolve_model_path(self):
+        if self.model_path and self.model_path.lower() != 'auto':
+            return self.model_path
+
+        candidates = [
+            'models/yolov8n.engine',
+            'yolov8n.engine',
+            'models/yolov8n.pt',
+            'yolov8n.pt',
+        ]
+        for candidate in candidates:
+            if Path(candidate).exists():
+                return candidate
+        raise FileNotFoundError(
+            'no YOLO model found; put yolov8n.engine or yolov8n.pt in /home/kown/jetcar_ws/models, '
+            'or set model_path in yolo_web.yaml'
+        )
+
+    def make_csi_pipeline(self):
+        return (
+            f'nvarguscamerasrc sensor-id={self.camera_sensor_id} ! '
+            f'video/x-raw(memory:NVMM), width={self.camera_width}, height={self.camera_height}, '
+            f'framerate={self.camera_fps}/1, format=NV12 ! '
+            f'nvvidconv flip-method={self.camera_flip_method} ! '
+            'video/x-raw, format=BGRx ! videoconvert ! '
+            'video/x-raw, format=BGR ! appsink drop=1 sync=false'
+        )
+
     def open_capture(self):
         source = self.camera_source
-        if source.isdigit():
-            capture = cv2.VideoCapture(int(source))
-        elif '!' in source:
+        if source.lower() in ('csi', 'nvargus', 'nvarguscamerasrc'):
+            pipeline = self.make_csi_pipeline()
+            self.active_camera_source = pipeline
+            capture = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+        elif '!' in source or self.camera_backend == 'gstreamer':
+            self.active_camera_source = source
             capture = cv2.VideoCapture(source, cv2.CAP_GSTREAMER)
+        elif source.isdigit():
+            self.active_camera_source = source
+            capture = cv2.VideoCapture(int(source))
         else:
+            self.active_camera_source = source
             capture = cv2.VideoCapture(source)
         if self.camera_width > 0:
             capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_width)
@@ -166,7 +217,7 @@ class YoloWebNode(Node):
         if not capture.isOpened():
             jpeg = self.encode_frame(self.make_status_frame(f'Camera unavailable: {self.camera_source}'))
             with self.frame_lock:
-                self.latest_status = f'camera unavailable: {self.camera_source}'
+                self.latest_status = f'camera unavailable: {self.active_camera_source or self.camera_source}'
                 self.latest_jpeg = jpeg
             self.get_logger().error(self.latest_status)
             return
@@ -227,17 +278,33 @@ class YoloWebNode(Node):
 
     def make_status_frame(self, text):
         frame = np.full((360, 640, 3), (20, 20, 20), dtype=np.uint8)
-        cv2.putText(
-            frame,
-            text[:64],
-            (24, 180),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (240, 240, 240),
-            2,
-            cv2.LINE_AA,
-        )
+        for index, line in enumerate(self.wrap_text(text, 48)[:5]):
+            cv2.putText(
+                frame,
+                line,
+                (24, 130 + index * 34),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (240, 240, 240),
+                2,
+                cv2.LINE_AA,
+            )
         return frame
+
+    def wrap_text(self, text, max_chars):
+        words = str(text).split()
+        lines = []
+        current = ''
+        for word in words:
+            if len(current) + len(word) + 1 > max_chars:
+                if current:
+                    lines.append(current)
+                current = word
+            else:
+                current = f'{current} {word}'.strip()
+        if current:
+            lines.append(current)
+        return lines or ['']
 
     def run_detection(self, frame):
         results = self.model.predict(
@@ -304,6 +371,9 @@ class YoloWebNode(Node):
                     'detection_count': self.latest_detection_count,
                     'hazard': self.latest_hazard,
                     'confidence': self.latest_confidence,
+                    'model_error': self.model_error,
+                    'model_path': self.active_model_path or self.model_path,
+                    'camera_source': self.active_camera_source or self.camera_source,
                     'status': self.latest_status,
                 })
 
@@ -330,7 +400,7 @@ class YoloWebNode(Node):
             hazard = self.latest_hazard
             confidence = self.latest_confidence
             status = (
-                f'model_loaded={self.model_loaded}, camera_source={self.camera_source}, '
+                f'model_loaded={self.model_loaded}, camera_source={self.active_camera_source or self.camera_source}, '
                 f'detections={self.latest_detection_count}, fps={self.latest_fps:.1f}, '
                 f'status={self.latest_status}'
             )

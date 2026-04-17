@@ -40,6 +40,13 @@ sudo apt install python3-opencv python3-flask
 pip install ultralytics
 ```
 
+Add a YOLO model file before expecting detections. Put one of these files in the workspace:
+
+```text
+/home/kown/jetcar_ws/models/yolov8n.engine
+/home/kown/jetcar_ws/models/yolov8n.pt
+```
+
 Run YOLO detection with MJPEG web streaming:
 
 ```bash
@@ -56,4 +63,12 @@ ssh -L 8080:localhost:8080 kown@JETCAR_IP
 
 Then open `http://localhost:8080`.
 
-The default camera source is `0` and the default model is `models/yolov8n.engine`. Change them in `src/jetcar_perception/config/yolo_web.yaml` when using a CSI/GStreamer pipeline, a different TensorRT engine, or a `.pt` model.
+The default camera source is `csi`, which uses Jetson `nvarguscamerasrc` and converts the frame to BGR for OpenCV. This avoids the all-green raw camera view that can happen when a CSI camera is opened as plain `/dev/video0`.
+
+For a USB camera, change `camera_source` in `src/jetcar_perception/config/yolo_web.yaml`:
+
+```yaml
+camera_source: "0"
+```
+
+If the web page says `YOLO model unavailable`, check that `ultralytics` is installed and that a model file exists. The default `model_path: auto` looks for `models/yolov8n.engine`, `yolov8n.engine`, `models/yolov8n.pt`, and `yolov8n.pt`.

@@ -2,8 +2,13 @@ yolo_web_node:
   ros__parameters:
     host: 0.0.0.0
     port: 8080
-    camera_source: "0"
-    model_path: models/yolov8n.engine
+    # Use "csi" for Jetson CSI cameras through nvarguscamerasrc.
+    # Use "0" or another device index for a USB V4L2 camera.
+    camera_source: csi
+    camera_backend: auto
+    camera_sensor_id: 0
+    camera_flip_method: 0
+    model_path: auto
     target_classes:
       - person
       - car
@@ -14,3 +19,4 @@ yolo_web_node:
     jpeg_quality: 80
     camera_width: 1280
     camera_height: 720
+    camera_fps: 30
