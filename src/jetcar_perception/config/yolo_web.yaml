@@ -2,25 +2,28 @@ yolo_web_node:
   ros__parameters:
     host: 0.0.0.0
     port: 8080
-    # Use "auto" to try CSI sensor 0/1, then USB V4L2 /dev/video0/1.
-    # Use "csi" to force Jetson nvarguscamerasrc, or "0" for a USB camera.
-    camera_source: auto
+    # Use "csi" for the Jetson CSI camera that previously worked.
+    # Use "auto" only when you intentionally want CSI->USB fallback probing.
+    # Use "0" or another device index for a USB camera.
+    camera_source: csi
     camera_backend: auto
     camera_sensor_id: 0
     camera_flip_method: 0
-    usb_fourcc: auto
+    # Keep the USB path conservative by default; forced FOURCC probing caused
+    # green frames on some devices. Set MJPG/YUYV only when needed explicitly.
+    usb_fourcc: default
     model_path: auto
     target_classes:
       - person
       - car
       - stop sign
     confidence_threshold: 0.4
-    image_size: 416
+    image_size: 640
     publish_rate_hz: 10.0
-    jpeg_quality: 65
+    jpeg_quality: 80
     camera_width: 1280
     camera_height: 720
-    camera_fps: 60
+    camera_fps: 30
     stream_width: 640
     stream_height: 360
     stream_delay_ms: 5

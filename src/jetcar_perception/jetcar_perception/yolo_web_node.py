@@ -520,20 +520,20 @@ class YoloWebNode(Node):
 
         self.declare_parameter('host', '0.0.0.0')
         self.declare_parameter('port', 8080)
-        self.declare_parameter('camera_source', 'auto')
+        self.declare_parameter('camera_source', 'csi')
         self.declare_parameter('camera_backend', 'auto')
         self.declare_parameter('camera_sensor_id', 0)
         self.declare_parameter('camera_flip_method', 0)
-        self.declare_parameter('usb_fourcc', 'auto')
+        self.declare_parameter('usb_fourcc', 'default')
         self.declare_parameter('model_path', 'auto')
         self.declare_parameter('target_classes', ['person', 'car', 'stop sign'])
         self.declare_parameter('confidence_threshold', 0.4)
-        self.declare_parameter('image_size', 416)
+        self.declare_parameter('image_size', 640)
         self.declare_parameter('publish_rate_hz', 10.0)
-        self.declare_parameter('jpeg_quality', 65)
+        self.declare_parameter('jpeg_quality', 80)
         self.declare_parameter('camera_width', 1280)
         self.declare_parameter('camera_height', 720)
-        self.declare_parameter('camera_fps', 60)
+        self.declare_parameter('camera_fps', 30)
         self.declare_parameter('stream_width', 640)
         self.declare_parameter('stream_height', 360)
         self.declare_parameter('stream_delay_ms', 5)
@@ -853,36 +853,18 @@ class YoloWebNode(Node):
         return capture, source
 
     def open_usb_capture(self, camera_index: int):
-        candidates = []
-        if self.usb_fourcc == 'AUTO':
-            candidates = ['DEFAULT', 'MJPG', 'YUYV']
-        else:
-            candidates = [self.usb_fourcc]
-
-        last_capture = None
-        last_source = f'/dev/video{camera_index}'
-        for fourcc_name in candidates:
-            capture = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
-            capture.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+        fourcc_name = self.usb_fourcc or 'DEFAULT'
+        if fourcc_name in ('AUTO', 'DEFAULT'):
+            capture = cv2.VideoCapture(camera_index)
             self.apply_capture_size(capture)
-            if fourcc_name != 'DEFAULT' and len(fourcc_name) == 4:
-                capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc_name))
+            return capture, f'/dev/video{camera_index}'
 
-            active_source = f'/dev/video{camera_index} fourcc={fourcc_name}'
-            if capture.isOpened():
-                ok, frame = capture.read()
-                if ok and frame is not None:
-                    self.pending_frame = self.normalize_frame(frame)
-                    return capture, active_source
-
-            if last_capture is not None:
-                last_capture.release()
-            last_capture = capture
-            last_source = active_source
-
-        if last_capture is None:
-            last_capture = cv2.VideoCapture(camera_index)
-        return last_capture, last_source
+        capture = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
+        capture.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+        self.apply_capture_size(capture)
+        if len(fourcc_name) == 4:
+            capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc_name))
+        return capture, f'/dev/video{camera_index} fourcc={fourcc_name}'
 
     def read_frame(self, capture):
         if self.pending_frame is not None:
