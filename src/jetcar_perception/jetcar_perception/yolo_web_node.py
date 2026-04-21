@@ -195,6 +195,10 @@ HTML_PAGE = """
             border-color: #3e6f4d;
             background: #233126;
         }
+        button.stop {
+            border-color: #5c6670;
+            background: #2c3238;
+        }
         pre {
             white-space: pre-wrap;
             word-break: break-word;
@@ -257,6 +261,93 @@ HTML_PAGE = """
         .badge.ai {
             border-color: #5f6b7a;
         }
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .axis-box {
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: #20252a;
+        }
+        .axis-box h3 {
+            margin: 0 0 4px;
+            font-size: 0.96rem;
+        }
+        .axis-box p {
+            margin: 0 0 10px;
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+        .axis-stack {
+            display: grid;
+            gap: 8px;
+        }
+        .axis-stack button {
+            min-height: 56px;
+        }
+        .keycap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            padding: 0 8px;
+            margin-right: 8px;
+            border-radius: 999px;
+            border: 1px solid #54606b;
+            background: #15191d;
+            color: #dbe4ea;
+            font-size: 0.82rem;
+            font-weight: 800;
+        }
+        .button-copy {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .emergency-card {
+            border: 1px solid #6f2f34;
+            background:
+                radial-gradient(circle at top, rgba(217, 83, 79, 0.18), transparent 45%),
+                linear-gradient(180deg, #2a1719 0%, #201315 100%);
+        }
+        .emergency-actions {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .emergency-button {
+            min-height: 84px;
+            border-radius: 14px;
+            border: 1px solid #a94b4e;
+            background: linear-gradient(180deg, #dc5a56 0%, #8d2727 100%);
+            color: #fff7f7;
+            letter-spacing: 0.04em;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        }
+        .emergency-button:hover {
+            background: linear-gradient(180deg, #e36763 0%, #9e2d2d 100%);
+        }
+        .emergency-button strong {
+            display: block;
+            font-size: 1.08rem;
+        }
+        .emergency-button span {
+            display: block;
+            margin-top: 4px;
+            font-size: 0.82rem;
+            color: #ffe5e4;
+        }
+        .release-button,
+        .secondary-button {
+            min-height: 84px;
+            border-radius: 14px;
+        }
         a {
             color: var(--accent);
         }
@@ -268,6 +359,10 @@ HTML_PAGE = """
         @media (max-width: 720px) {
             .stats, .mode-row, .btn-row {
                 grid-template-columns: repeat(2, 1fr);
+            }
+            .control-grid,
+            .emergency-actions {
+                grid-template-columns: 1fr;
             }
             .topbar {
                 flex-direction: column;
@@ -350,28 +445,44 @@ HTML_PAGE = """
 
                 <div class="card">
                     <div class="section-title">
-                        <h2>Quick Control</h2>
-                        <span>Keyboard Enabled</span>
+                        <h2>Manual Control</h2>
+                        <span>Hold to repeat</span>
                     </div>
-                    <div class="pad">
-                        <div></div>
-                        <button data-key="w">W</button>
-                        <div></div>
-                        <button data-key="a">A</button>
-                        <button data-key="x">X</button>
-                        <button data-key="d">D</button>
-                        <div></div>
-                        <button data-key="s">S</button>
-                        <div></div>
+                    <div class="control-grid">
+                        <div class="axis-box">
+                            <h3>Throttle Axis</h3>
+                            <p><span class="keycap">W</span>forward / <span class="keycap">S</span>reverse</p>
+                            <div class="axis-stack">
+                                <button data-key="w"><span class="button-copy"><span class="keycap">W</span>Forward</span></button>
+                                <button class="stop" data-key="x"><span class="button-copy"><span class="keycap">X</span>Brake</span></button>
+                                <button data-key="s"><span class="button-copy"><span class="keycap">S</span>Reverse</span></button>
+                            </div>
+                        </div>
+                        <div class="axis-box">
+                            <h3>Steering Axis</h3>
+                            <p><span class="keycap">A</span>left / <span class="keycap">D</span>right</p>
+                            <div class="axis-stack">
+                                <button data-key="a"><span class="button-copy"><span class="keycap">A</span>Left</span></button>
+                                <button data-key="c"><span class="button-copy"><span class="keycap">C</span>Center</span></button>
+                                <button data-key="d"><span class="button-copy"><span class="keycap">D</span>Right</span></button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="meta">Keyboard: `W/S` throttle, `A/D` steering, `X` brake, `C` center, `E` estop, `R` release</div>
+                    <div class="meta">Keyboard: `W/S`는 전진/후진, `A/D`는 좌/우 조향, `X`는 브레이크, `C`는 조향 중앙 복귀입니다.</div>
                 </div>
 
-                <div class="card">
-                    <div class="btn-row">
-                        <button class="danger" data-action="estop">E-STOP</button>
-                        <button class="ok" data-action="release">RELEASE</button>
-                        <button data-action="reset-all">RESET</button>
+                <div class="card emergency-card">
+                    <div class="section-title">
+                        <h2>Emergency</h2>
+                        <span>Immediate stop path</span>
+                    </div>
+                    <div class="emergency-actions">
+                        <button class="emergency-button" data-action="estop">
+                            <strong>EMERGENCY STOP</strong>
+                            <span>Motor stop + steering neutral</span>
+                        </button>
+                        <button class="ok release-button" data-action="release">RELEASE</button>
+                        <button class="secondary-button" data-action="reset-all">RESET</button>
                     </div>
                     <pre id="controlText">Loading...</pre>
                 </div>
@@ -475,12 +586,6 @@ HTML_PAGE = """
                 else if (action === 'release') postControl('/api/control_command', {key: 'r'});
             });
         });
-        document.querySelectorAll('[data-key]').forEach(function(button) {
-            button.addEventListener('click', function() {
-                postControl('/api/control_command', {key: button.dataset.key});
-            });
-        });
-
         const repeatKeys = new Set(['w', 'a', 's', 'd']);
         const singleKeys = new Set(['x', 'c', 'e', 'r']);
         const activeKeys = new Set();
@@ -495,12 +600,7 @@ HTML_PAGE = """
             postControl('/api/control_command', {key: key});
         }
 
-        document.addEventListener('keydown', function(event) {
-            const key = event.key.toLowerCase();
-            if (!(repeatKeys.has(key) || singleKeys.has(key))) {
-                return;
-            }
-            event.preventDefault();
+        function pressKey(key) {
             if (repeatKeys.has(key)) {
                 if (activeKeys.has(key)) {
                     return;
@@ -509,6 +609,20 @@ HTML_PAGE = """
             }
             markKey(key, true);
             sendKey(key);
+        }
+
+        function releaseKey(key) {
+            activeKeys.delete(key);
+            markKey(key, false);
+        }
+
+        document.addEventListener('keydown', function(event) {
+            const key = event.key.toLowerCase();
+            if (!(repeatKeys.has(key) || singleKeys.has(key))) {
+                return;
+            }
+            event.preventDefault();
+            pressKey(key);
         });
 
         document.addEventListener('keyup', function(event) {
@@ -517,8 +631,7 @@ HTML_PAGE = """
                 return;
             }
             event.preventDefault();
-            activeKeys.delete(key);
-            markKey(key, false);
+            releaseKey(key);
         });
 
         setInterval(function() {
@@ -526,6 +639,32 @@ HTML_PAGE = """
                 sendKey(key);
             });
         }, 90);
+
+        document.querySelectorAll('[data-key]').forEach(function(button) {
+            const key = button.dataset.key;
+            const start = function(event) {
+                event.preventDefault();
+                pressKey(key);
+            };
+            const end = function(event) {
+                if (event) {
+                    event.preventDefault();
+                }
+                releaseKey(key);
+            };
+            button.addEventListener('pointerdown', start);
+            button.addEventListener('pointerup', end);
+            button.addEventListener('pointercancel', end);
+            button.addEventListener('pointerleave', end);
+            button.addEventListener('click', function(event) {
+                event.preventDefault();
+                if (repeatKeys.has(key)) {
+                    return;
+                }
+                pressKey(key);
+                releaseKey(key);
+            });
+        });
 
         setInterval(refreshAll, 500);
         refreshAll();
