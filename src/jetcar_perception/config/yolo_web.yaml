@@ -8,6 +8,7 @@ yolo_web_node:
     camera_backend: auto
     camera_sensor_id: 0
     camera_flip_method: 0
+    usb_fourcc: auto
     model_path: auto
     target_classes:
       - person
@@ -24,3 +25,5 @@ yolo_web_node:
     stream_height: 360
     stream_delay_ms: 5
     detection_rate_hz: 8.0
+    throttle_step: 0.1
+    steering_step_cmd: 0.2

@@ -11,6 +11,7 @@
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <exec_depend>jetcar_control</exec_depend>
+  <exec_depend>jetcar_perception</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

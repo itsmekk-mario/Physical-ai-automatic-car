@@ -1,12 +1,13 @@
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import cv2
 import numpy as np
 import rclpy
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
-from flask import Flask, Response, jsonify, render_template_string
+from flask import Flask, Response, jsonify, render_template_string, request
 from rclpy.node import Node
 from std_msgs.msg import Bool, Float32, String
 
@@ -17,60 +18,496 @@ HTML_PAGE = """
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>JetCar YOLO View</title>
+    <title>JetCar YOLO Dashboard</title>
     <style>
+        :root {
+            color-scheme: dark;
+            --bg: #091113;
+            --panel: rgba(15, 26, 29, 0.92);
+            --line: rgba(133, 196, 180, 0.18);
+            --text: #edf5f2;
+            --muted: #9db2ac;
+            --accent: #3fe0ab;
+            --danger: #ef6258;
+            --shadow: 0 22px 56px rgba(0, 0, 0, 0.35);
+        }
+        * { box-sizing: border-box; }
         body {
             margin: 0;
-            font-family: Arial, sans-serif;
-            background: #101010;
-            color: #f1f1f1;
+            font-family: "Segoe UI", "Noto Sans KR", sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(63, 224, 171, 0.14), transparent 28%),
+                radial-gradient(circle at top right, rgba(239, 98, 88, 0.12), transparent 22%),
+                linear-gradient(180deg, #071012 0%, #0d1719 100%);
+            color: var(--text);
         }
-        header {
-            padding: 14px 18px;
-            background: #181818;
-            border-bottom: 1px solid #303030;
-        }
-        h1 {
-            margin: 0;
-            font-size: 22px;
-        }
-        main {
-            max-width: 1180px;
+        .shell {
+            max-width: 1400px;
             margin: 0 auto;
             padding: 18px;
         }
-        img {
+        .hero {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            margin-bottom: 18px;
+        }
+        .hero h1 {
+            margin: 0;
+            font-size: clamp(2rem, 4vw, 3.2rem);
+            letter-spacing: 0.04em;
+        }
+        .hero p {
+            margin: 8px 0 0;
+            color: var(--muted);
+            max-width: 760px;
+        }
+        .pill {
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(63, 224, 171, 0.26);
+            background: rgba(63, 224, 171, 0.1);
+            white-space: nowrap;
+        }
+        .layout {
+            display: grid;
+            grid-template-columns: 1.25fr 0.95fr;
+            gap: 18px;
+        }
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+        .panel-inner {
+            padding: 18px;
+        }
+        .stream-wrap {
+            position: relative;
+            background: #000;
+            border-radius: 18px;
+            overflow: hidden;
+        }
+        .stream-wrap img {
             display: block;
             width: 100%;
-            max-height: 78vh;
-            object-fit: contain;
+            min-height: 320px;
             background: #000;
+            object-fit: contain;
         }
-        .status {
-            margin-top: 12px;
-            color: #cfcfcf;
-            font-size: 14px;
+        .overlay {
+            position: absolute;
+            left: 14px;
+            bottom: 14px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .overlay .pill {
+            background: rgba(7, 16, 18, 0.8);
+            border-color: rgba(255, 255, 255, 0.08);
+            font-size: 0.92rem;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .stat {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 18px;
+            padding: 12px;
+        }
+        .stat label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 6px;
+        }
+        .stat strong {
+            display: block;
+            font-size: 1.45rem;
+        }
+        .cards {
+            display: grid;
+            gap: 14px;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 16px;
+        }
+        .card-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .card-head h2 {
+            margin: 0;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .card-head span {
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+        }
+        .btn-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .pad {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(70px, 1fr));
+            gap: 10px;
+        }
+        button {
+            min-height: 58px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            background: linear-gradient(180deg, rgba(28, 49, 53, 0.96), rgba(16, 29, 32, 0.98));
+            color: var(--text);
+            font-size: 0.98rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 100ms ease, border-color 100ms ease;
+            touch-action: manipulation;
+        }
+        button:hover { border-color: rgba(63, 224, 171, 0.28); }
+        button:active, button.active { transform: translateY(1px) scale(0.99); }
+        button.stop {
+            background: linear-gradient(180deg, rgba(73, 81, 86, 0.98), rgba(42, 50, 55, 0.98));
+        }
+        button.release {
+            background: linear-gradient(180deg, rgba(63, 224, 171, 0.95), rgba(30, 147, 113, 0.98));
+            color: #04100c;
+        }
+        button.danger {
+            background: linear-gradient(180deg, rgba(223, 92, 80, 0.98), rgba(129, 37, 37, 0.98));
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+        @media (max-width: 960px) {
+            .layout { grid-template-columns: 1fr; }
+            .grid { grid-template-columns: repeat(2, 1fr); }
+            .btn-row { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 560px) {
+            .shell { padding: 12px; }
+            .hero { flex-direction: column; }
+            .grid, .btn-row { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-    <header><h1>JetCar YOLO View</h1></header>
-    <main>
-        <img src="/stream" alt="YOLO stream">
-        <div class="status" id="status">Loading...</div>
-    </main>
+    <div class="shell">
+        <div class="hero">
+            <div>
+                <h1>JetCar YOLO Dashboard</h1>
+                <p>YOLO 객체 인식 영상과 수동 주행 제어를 한 화면에서 처리합니다. 브라우저만으로 조작 가능하고, `E-STOP`은 즉시 `/system/estop_cmd`로 전송됩니다.</p>
+            </div>
+            <div class="pill" id="connectState">Connecting...</div>
+        </div>
+
+        <div class="layout">
+            <div class="panel">
+                <div class="panel-inner">
+                    <div class="stream-wrap">
+                        <img src="/stream" alt="YOLO stream">
+                        <div class="overlay">
+                            <div class="pill" id="overlayStatus">status</div>
+                            <div class="pill" id="overlayCamera">camera</div>
+                            <div class="pill" id="overlayModel">model</div>
+                        </div>
+                    </div>
+                    <div class="grid">
+                        <div class="stat"><label>Detections</label><strong id="detCount">0</strong></div>
+                        <div class="stat"><label>Hazard</label><strong id="hazardValue">false</strong></div>
+                        <div class="stat"><label>FPS</label><strong id="fpsValue">0.0</strong></div>
+                        <div class="stat"><label>Det FPS</label><strong id="detFpsValue">0.0</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-inner cards">
+                    <div class="card">
+                        <div class="card-head">
+                            <h2>Manual Control</h2>
+                            <span id="controlStatus">ready</span>
+                        </div>
+                        <div class="grid" style="grid-template-columns: repeat(3, 1fr); margin-top: 0;">
+                            <div class="stat"><label>Throttle</label><strong id="throttleValue">0.00</strong></div>
+                            <div class="stat"><label>Steering</label><strong id="steeringValue">0.00</strong></div>
+                            <div class="stat"><label>E-Stop</label><strong id="estopValue">OFF</strong></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-head">
+                            <h2>Throttle</h2>
+                            <span id="throttlePercent">0%</span>
+                        </div>
+                        <input id="throttleSlider" type="range" min="-100" max="100" value="0" step="1">
+                        <div class="btn-row">
+                            <button data-throttle="-40">REV 40%</button>
+                            <button data-throttle="-20">REV 20%</button>
+                            <button class="stop" data-action="stop">STOP</button>
+                            <button data-throttle="20">FWD 20%</button>
+                            <button data-throttle="40">FWD 40%</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-head">
+                            <h2>Steering</h2>
+                            <span id="steeringPercent">0%</span>
+                        </div>
+                        <input id="steeringSlider" type="range" min="-100" max="100" value="0" step="1">
+                        <div class="btn-row">
+                            <button data-steering="-100">HARD L</button>
+                            <button data-steering="-40">LEFT</button>
+                            <button class="stop" data-action="center">CENTER</button>
+                            <button data-steering="40">RIGHT</button>
+                            <button data-steering="100">HARD R</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-head">
+                            <h2>Touch Drive Pad</h2>
+                            <span>press and hold</span>
+                        </div>
+                        <div class="pad">
+                            <div></div>
+                            <button data-key="w">Forward</button>
+                            <div></div>
+                            <button data-key="a">Left</button>
+                            <button class="stop" data-key="x">Brake</button>
+                            <button data-key="d">Right</button>
+                            <div></div>
+                            <button data-key="s">Reverse</button>
+                            <div></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-head">
+                            <h2>Safety</h2>
+                            <span>Immediate action</span>
+                        </div>
+                        <div class="btn-row">
+                            <button class="danger" data-action="estop">E-STOP</button>
+                            <button class="release" data-action="release">RELEASE</button>
+                            <button class="stop" data-action="reset-all">RESET ALL</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-head">
+                            <h2>System</h2>
+                            <span>Live state</span>
+                        </div>
+                        <pre id="systemText">Loading...</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        async function refreshStatus() {
-            const response = await fetch('/api/status');
-            const data = await response.json();
-            document.getElementById('status').textContent =
-                `ready=${data.ready} model=${data.model_loaded} fps=${data.fps.toFixed(1)} ` +
-                `det_fps=${data.detection_fps.toFixed(1)} ` +
-                `detections=${data.detection_count} hazard=${data.hazard} ` +
-                `model_path=${data.model_path} camera=${data.camera_source} status=${data.status}`;
+        const throttleSlider = document.getElementById('throttleSlider');
+        const steeringSlider = document.getElementById('steeringSlider');
+        const throttleValue = document.getElementById('throttleValue');
+        const steeringValue = document.getElementById('steeringValue');
+        const estopValue = document.getElementById('estopValue');
+        const throttlePercent = document.getElementById('throttlePercent');
+        const steeringPercent = document.getElementById('steeringPercent');
+        const controlStatus = document.getElementById('controlStatus');
+        const connectState = document.getElementById('connectState');
+        const systemText = document.getElementById('systemText');
+
+        async function fetchJson(url, options) {
+            const response = await fetch(url, options);
+            return response.json();
         }
-        setInterval(refreshStatus, 1000);
-        refreshStatus();
+
+        function updateVision(data) {
+            document.getElementById('detCount').textContent = data.detection_count;
+            document.getElementById('hazardValue').textContent = String(data.hazard);
+            document.getElementById('fpsValue').textContent = Number(data.fps).toFixed(1);
+            document.getElementById('detFpsValue').textContent = Number(data.detection_fps).toFixed(1);
+            document.getElementById('overlayStatus').textContent = data.status;
+            document.getElementById('overlayCamera').textContent = data.camera_source;
+            document.getElementById('overlayModel').textContent = data.model_path;
+            systemText.textContent =
+                `ready=${data.ready}\n` +
+                `model_loaded=${data.model_loaded}\n` +
+                `camera=${data.camera_source}\n` +
+                `model=${data.model_path}\n` +
+                `confidence=${Number(data.confidence).toFixed(2)}\n` +
+                `status=${data.status}`;
+        }
+
+        function updateControl(data) {
+            throttleValue.textContent = Number(data.throttle).toFixed(2);
+            steeringValue.textContent = Number(data.steering).toFixed(2);
+            estopValue.textContent = data.estop ? 'ON' : 'OFF';
+            throttleSlider.value = Math.round(Number(data.throttle) * 100);
+            steeringSlider.value = Math.round(Number(data.steering) * 100);
+            throttlePercent.textContent = `${Math.round(Number(data.throttle) * 100)}%`;
+            steeringPercent.textContent = `${Math.round(Number(data.steering) * 100)}%`;
+            controlStatus.textContent = data.status;
+        }
+
+        async function refreshAll() {
+            try {
+                const [vision, control] = await Promise.all([
+                    fetchJson('/api/status'),
+                    fetchJson('/api/control_state')
+                ]);
+                updateVision(vision);
+                updateControl(control);
+                connectState.textContent = 'Connected';
+            } catch (error) {
+                connectState.textContent = 'Disconnected';
+                systemText.textContent = 'poll failed: ' + error;
+            }
+        }
+
+        async function postControl(url, payload) {
+            const data = await fetchJson(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload || {})
+            });
+            updateControl(data);
+        }
+
+        throttleSlider.addEventListener('input', function() {
+            throttlePercent.textContent = `${throttleSlider.value}%`;
+        });
+        steeringSlider.addEventListener('input', function() {
+            steeringPercent.textContent = `${steeringSlider.value}%`;
+        });
+        throttleSlider.addEventListener('change', function() {
+            postControl('/api/set_control_state', {throttle: Number(throttleSlider.value) / 100.0});
+        });
+        steeringSlider.addEventListener('change', function() {
+            postControl('/api/set_control_state', {steering: Number(steeringSlider.value) / 100.0});
+        });
+
+        document.querySelectorAll('[data-throttle]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                postControl('/api/set_control_state', {throttle: Number(button.dataset.throttle) / 100.0});
+            });
+        });
+        document.querySelectorAll('[data-steering]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                postControl('/api/set_control_state', {steering: Number(button.dataset.steering) / 100.0});
+            });
+        });
+        document.querySelectorAll('[data-action]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                const action = button.dataset.action;
+                if (action === 'stop') {
+                    postControl('/api/set_control_state', {throttle: 0.0});
+                } else if (action === 'center') {
+                    postControl('/api/set_control_state', {steering: 0.0});
+                } else if (action === 'reset-all') {
+                    postControl('/api/set_control_state', {throttle: 0.0, steering: 0.0});
+                } else if (action === 'estop') {
+                    postControl('/api/control_command', {key: 'e'});
+                } else if (action === 'release') {
+                    postControl('/api/control_command', {key: 'r'});
+                }
+            });
+        });
+
+        const repeatKeys = new Set(['w', 'a', 's', 'd']);
+        const singleKeys = new Set(['x', 'e', 'r', 'c']);
+        const activeKeys = new Set();
+
+        function pressKey(key) {
+            if (repeatKeys.has(key)) {
+                if (!activeKeys.has(key)) {
+                    activeKeys.add(key);
+                    postControl('/api/control_command', {key});
+                }
+            } else if (singleKeys.has(key)) {
+                postControl('/api/control_command', {key});
+            }
+        }
+
+        function releaseKey(key) {
+            activeKeys.delete(key);
+            document.querySelectorAll(`[data-key="${key}"]`).forEach(function(button) {
+                button.classList.remove('active');
+            });
+        }
+
+        setInterval(function() {
+            activeKeys.forEach(function(key) {
+                postControl('/api/control_command', {key});
+            });
+        }, 80);
+
+        document.addEventListener('keydown', function(event) {
+            const key = event.key.toLowerCase();
+            if (repeatKeys.has(key) || singleKeys.has(key)) {
+                event.preventDefault();
+                pressKey(key);
+                document.querySelectorAll(`[data-key="${key}"]`).forEach(function(button) {
+                    button.classList.add('active');
+                });
+            }
+        });
+        document.addEventListener('keyup', function(event) {
+            releaseKey(event.key.toLowerCase());
+        });
+
+        document.querySelectorAll('button[data-key]').forEach(function(button) {
+            const key = button.dataset.key;
+            const start = function(event) {
+                event.preventDefault();
+                pressKey(key);
+                button.classList.add('active');
+            };
+            const end = function(event) {
+                if (event) {
+                    event.preventDefault();
+                }
+                releaseKey(key);
+            };
+            button.addEventListener('pointerdown', start);
+            button.addEventListener('pointerup', end);
+            button.addEventListener('pointercancel', end);
+            button.addEventListener('pointerleave', end);
+        });
+
+        setInterval(refreshAll, 1000);
+        refreshAll();
     </script>
 </body>
 </html>
@@ -87,6 +524,7 @@ class YoloWebNode(Node):
         self.declare_parameter('camera_backend', 'auto')
         self.declare_parameter('camera_sensor_id', 0)
         self.declare_parameter('camera_flip_method', 0)
+        self.declare_parameter('usb_fourcc', 'auto')
         self.declare_parameter('model_path', 'auto')
         self.declare_parameter('target_classes', ['person', 'car', 'stop sign'])
         self.declare_parameter('confidence_threshold', 0.4)
@@ -100,6 +538,8 @@ class YoloWebNode(Node):
         self.declare_parameter('stream_height', 360)
         self.declare_parameter('stream_delay_ms', 5)
         self.declare_parameter('detection_rate_hz', 8.0)
+        self.declare_parameter('throttle_step', 0.1)
+        self.declare_parameter('steering_step_cmd', 0.2)
 
         self.host = str(self.get_parameter('host').value)
         self.port = int(self.get_parameter('port').value)
@@ -107,6 +547,7 @@ class YoloWebNode(Node):
         self.camera_backend = str(self.get_parameter('camera_backend').value).lower().strip()
         self.camera_sensor_id = int(self.get_parameter('camera_sensor_id').value)
         self.camera_flip_method = int(self.get_parameter('camera_flip_method').value)
+        self.usb_fourcc = str(self.get_parameter('usb_fourcc').value).upper().strip()
         self.model_path = str(self.get_parameter('model_path').value)
         self.target_classes = [str(name) for name in self.get_parameter('target_classes').value]
         self.confidence_threshold = float(self.get_parameter('confidence_threshold').value)
@@ -119,11 +560,17 @@ class YoloWebNode(Node):
         self.stream_height = int(self.get_parameter('stream_height').value)
         self.stream_delay = max(0.0, int(self.get_parameter('stream_delay_ms').value) / 1000.0)
         self.detection_rate_hz = float(self.get_parameter('detection_rate_hz').value)
+        self.throttle_step = float(self.get_parameter('throttle_step').value)
+        self.steering_step_cmd = float(self.get_parameter('steering_step_cmd').value)
 
         self.ready_pub = self.create_publisher(Bool, '/perception/detections/ready', 10)
         self.hazard_pub = self.create_publisher(Bool, '/perception/detections/hazard', 10)
         self.closest_pub = self.create_publisher(Float32, '/perception/detections/closest_confidence', 10)
         self.status_pub = self.create_publisher(String, '/perception/detections/status', 10)
+        self.manual_throttle_pub = self.create_publisher(Float32, '/input/manual/throttle', 10)
+        self.manual_steering_pub = self.create_publisher(Float32, '/input/manual/steering', 10)
+        self.estop_pub = self.create_publisher(Bool, '/system/estop_cmd', 10)
+        self.create_subscription(Bool, '/vehicle/emergency_stop_state', self.estop_state_cb, 10)
 
         self.frame_lock = threading.Lock()
         self.latest_jpeg = None
@@ -147,6 +594,12 @@ class YoloWebNode(Node):
         self.detector_frame = None
         self.detector_event = threading.Event()
         self.next_detection_time = 0.0
+        self.control_lock = threading.Lock()
+        self.control_queue = deque()
+        self.current_throttle = 0.0
+        self.current_steering = 0.0
+        self.estop_active = False
+        self.control_status = 'ready'
 
         self.model = self.load_model()
         self.app = Flask(__name__)
@@ -167,6 +620,101 @@ class YoloWebNode(Node):
             f'url=http://{self.host}:{self.port}, camera_source={self.camera_source}, model={self.model_path}'
         )
 
+    def estop_state_cb(self, msg: Bool):
+        self.estop_active = bool(msg.data)
+        self.control_status = f'estop_state={self.estop_active}'
+
+    def control_state_payload(self):
+        return {
+            'ok': True,
+            'throttle': float(self.current_throttle),
+            'steering': float(self.current_steering),
+            'estop': bool(self.estop_active),
+            'status': self.control_status,
+        }
+
+    def clamp_control(self, value: float) -> float:
+        return max(-1.0, min(1.0, float(value)))
+
+    def publish_control(self):
+        throttle_msg = Float32()
+        throttle_msg.data = float(self.current_throttle)
+        self.manual_throttle_pub.publish(throttle_msg)
+
+        steering_msg = Float32()
+        steering_msg.data = float(self.current_steering)
+        self.manual_steering_pub.publish(steering_msg)
+
+    def publish_estop(self):
+        estop_msg = Bool()
+        estop_msg.data = bool(self.estop_active)
+        self.estop_pub.publish(estop_msg)
+
+    def handle_control_key(self, key: str):
+        if key == 'w':
+            if self.estop_active:
+                self.control_status = 'ignored forward command while estop is active'
+                return
+            self.current_throttle = self.clamp_control(self.current_throttle + self.throttle_step)
+            self.control_status = f'throttle increased to {self.current_throttle:.2f}'
+        elif key == 's':
+            if self.estop_active:
+                self.control_status = 'ignored reverse command while estop is active'
+                return
+            self.current_throttle = self.clamp_control(self.current_throttle - self.throttle_step)
+            self.control_status = f'throttle decreased to {self.current_throttle:.2f}'
+        elif key == 'x':
+            self.current_throttle = 0.0
+            self.control_status = 'throttle set to 0.00'
+        elif key == 'a':
+            if self.estop_active:
+                self.control_status = 'ignored left steering while estop is active'
+                return
+            self.current_steering = self.clamp_control(self.current_steering - self.steering_step_cmd)
+            self.control_status = f'steering moved to {self.current_steering:.2f}'
+        elif key == 'd':
+            if self.estop_active:
+                self.control_status = 'ignored right steering while estop is active'
+                return
+            self.current_steering = self.clamp_control(self.current_steering + self.steering_step_cmd)
+            self.control_status = f'steering moved to {self.current_steering:.2f}'
+        elif key == 'c':
+            if self.estop_active:
+                self.control_status = 'ignored center steering while estop is active'
+                return
+            self.current_steering = 0.0
+            self.control_status = 'steering centered'
+        elif key == 'e':
+            self.estop_active = True
+            self.current_throttle = 0.0
+            self.current_steering = 0.0
+            self.publish_estop()
+            self.control_status = 'emergency stop engaged'
+        elif key == 'r':
+            self.estop_active = False
+            self.publish_estop()
+            self.control_status = 'emergency stop released'
+
+    def apply_control_patch(self, data):
+        throttle = data.get('throttle')
+        steering = data.get('steering')
+
+        if throttle is not None:
+            if self.estop_active:
+                self.current_throttle = 0.0
+                self.control_status = 'ignored throttle set while estop is active'
+            else:
+                self.current_throttle = self.clamp_control(throttle)
+                self.control_status = f'throttle set to {self.current_throttle:.2f}'
+
+        if steering is not None:
+            if self.estop_active:
+                self.current_steering = 0.0
+                self.control_status = 'ignored steering set while estop is active'
+            else:
+                self.current_steering = self.clamp_control(steering)
+                self.control_status = f'steering set to {self.current_steering:.2f}'
+
     def load_model(self):
         try:
             from ultralytics import YOLO
@@ -181,13 +729,22 @@ class YoloWebNode(Node):
         except Exception as exc:
             self.model_loaded = False
             searched = ', '.join(self.model_search_paths)
-            if searched:
-                self.model_error = f'{exc}; searched: {searched}'
-            else:
-                self.model_error = str(exc)
+            self.model_error = self.format_model_error(exc, searched)
             self.latest_status = f'model unavailable: {self.model_error}'
             self.get_logger().warning(self.latest_status)
             return None
+
+    def format_model_error(self, exc: Exception, searched: str) -> str:
+        text = str(exc).strip()
+        lowered = text.lower()
+        if 'compiled using numpy 1.x' in lowered or '_array_api not found' in lowered:
+            text = (
+                'NumPy 2.x ABI mismatch with torch/onnxruntime. '
+                'Install numpy<2, for example numpy==1.26.4.'
+            )
+        if searched:
+            return f'{text}; searched: {searched}'
+        return text
 
     def resolve_model_path(self):
         if self.model_path and self.model_path.lower() != 'auto':
@@ -289,22 +846,53 @@ class YoloWebNode(Node):
         if '!' in source or self.camera_backend == 'gstreamer':
             return cv2.VideoCapture(source, cv2.CAP_GSTREAMER), source
         if source.isdigit():
-            capture = cv2.VideoCapture(int(source))
-            capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-            capture.set(cv2.CAP_PROP_CONVERT_RGB, 1)
-            self.apply_capture_size(capture)
-            return capture, f'/dev/video{source}'
+            return self.open_usb_capture(int(source))
 
         capture = cv2.VideoCapture(source)
         self.apply_capture_size(capture)
         return capture, source
+
+    def open_usb_capture(self, camera_index: int):
+        candidates = []
+        if self.usb_fourcc == 'AUTO':
+            candidates = ['DEFAULT', 'MJPG', 'YUYV']
+        else:
+            candidates = [self.usb_fourcc]
+
+        last_capture = None
+        last_source = f'/dev/video{camera_index}'
+        for fourcc_name in candidates:
+            capture = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
+            capture.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+            self.apply_capture_size(capture)
+            if fourcc_name != 'DEFAULT' and len(fourcc_name) == 4:
+                capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc_name))
+
+            active_source = f'/dev/video{camera_index} fourcc={fourcc_name}'
+            if capture.isOpened():
+                ok, frame = capture.read()
+                if ok and frame is not None:
+                    self.pending_frame = self.normalize_frame(frame)
+                    return capture, active_source
+
+            if last_capture is not None:
+                last_capture.release()
+            last_capture = capture
+            last_source = active_source
+
+        if last_capture is None:
+            last_capture = cv2.VideoCapture(camera_index)
+        return last_capture, last_source
 
     def read_frame(self, capture):
         if self.pending_frame is not None:
             frame = self.pending_frame
             self.pending_frame = None
             return True, frame
-        return capture.read()
+        ok, frame = capture.read()
+        if not ok or frame is None:
+            return False, None
+        return True, self.normalize_frame(frame)
 
     def make_capture_unavailable_text(self):
         if self.camera_source.lower().strip() == 'auto':
@@ -378,10 +966,26 @@ class YoloWebNode(Node):
         capture.release()
 
     def prepare_stream_frame(self, frame):
+        frame = self.normalize_frame(frame)
         if self.stream_width > 0 and self.stream_height > 0:
             current_height, current_width = frame.shape[:2]
             if current_width != self.stream_width or current_height != self.stream_height:
                 return cv2.resize(frame, (self.stream_width, self.stream_height), interpolation=cv2.INTER_AREA)
+        return frame
+
+    def normalize_frame(self, frame):
+        if frame is None:
+            return None
+        if frame.dtype != np.uint8:
+            frame = np.clip(frame, 0, 255).astype(np.uint8)
+        if frame.ndim == 2:
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        elif frame.ndim == 3 and frame.shape[2] == 4:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+        elif frame.ndim != 3 or frame.shape[2] != 3:
+            raise ValueError(f'unsupported frame shape: {frame.shape}')
+        if not frame.flags['C_CONTIGUOUS']:
+            frame = np.ascontiguousarray(frame)
         return frame
 
     def submit_detection_frame(self, frame):
@@ -534,6 +1138,26 @@ class YoloWebNode(Node):
                     'status': self.latest_status,
                 })
 
+        @self.app.route('/api/control_state', methods=['GET'])
+        def api_control_state():
+            return jsonify(self.control_state_payload())
+
+        @self.app.route('/api/control_command', methods=['POST'])
+        def api_control_command():
+            data = request.get_json(silent=True) or {}
+            key = str(data.get('key', '')).lower().strip()
+            if key:
+                with self.control_lock:
+                    self.control_queue.append(key)
+            return jsonify(self.control_state_payload())
+
+        @self.app.route('/api/set_control_state', methods=['POST'])
+        def api_set_control_state():
+            data = request.get_json(silent=True) or {}
+            with self.control_lock:
+                self.apply_control_patch(data)
+            return jsonify(self.control_state_payload())
+
         @self.app.route('/stream', methods=['GET'])
         def stream():
             response = Response(self.stream_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -560,6 +1184,13 @@ class YoloWebNode(Node):
         self.app.run(host=self.host, port=self.port, debug=False, use_reloader=False, threaded=True)
 
     def timer_callback(self):
+        with self.control_lock:
+            while self.control_queue:
+                self.handle_control_key(self.control_queue.popleft())
+            self.publish_control()
+            if self.estop_active:
+                self.publish_estop()
+
         with self.frame_lock:
             ready = self.latest_ready
             hazard = self.latest_hazard

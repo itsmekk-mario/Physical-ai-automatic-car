@@ -29,6 +29,7 @@ setup(
             'keyboard_control_node = jetcar_base.keyboard_control_node:main',
             'web_control_node = jetcar_base.web_control_node:main',
             'manual_web_stack = jetcar_base.manual_web_stack:main',
+            'manual_yolo_stack = jetcar_base.manual_yolo_stack:main',
         ],
     },
 )
