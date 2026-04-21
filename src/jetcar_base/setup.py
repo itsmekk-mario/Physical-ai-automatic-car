@@ -28,6 +28,7 @@ setup(
             'motor_test_node = jetcar_base.motor_test_node:main',
             'keyboard_control_node = jetcar_base.keyboard_control_node:main',
             'web_control_node = jetcar_base.web_control_node:main',
+            'manual_web_stack = jetcar_base.manual_web_stack:main',
         ],
     },
 )
