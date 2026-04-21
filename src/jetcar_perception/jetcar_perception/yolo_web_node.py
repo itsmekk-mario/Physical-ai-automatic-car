@@ -80,390 +80,345 @@ HTML_PAGE = """
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>JetCar YOLO Dashboard</title>
+    <title>JetCar Dashboard</title>
     <style>
         :root {
-            color-scheme: dark;
-            --bg: #091113;
-            --panel: rgba(15, 26, 29, 0.92);
-            --line: rgba(133, 196, 180, 0.18);
-            --text: #edf5f2;
-            --muted: #9db2ac;
-            --accent: #3fe0ab;
-            --danger: #ef6258;
-            --shadow: 0 22px 56px rgba(0, 0, 0, 0.35);
+            --bg: #101214;
+            --panel: #171a1d;
+            --panel-2: #1e2226;
+            --border: #2c3238;
+            --text: #f2f4f5;
+            --muted: #b1b8bf;
+            --accent: #4da3ff;
+            --danger: #d9534f;
+            --ok: #42a66a;
         }
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
         body {
             margin: 0;
+            padding: 16px;
             font-family: "Segoe UI", "Noto Sans KR", sans-serif;
-            background:
-                radial-gradient(circle at top left, rgba(63, 224, 171, 0.14), transparent 28%),
-                radial-gradient(circle at top right, rgba(239, 98, 88, 0.12), transparent 22%),
-                linear-gradient(180deg, #071012 0%, #0d1719 100%);
+            background: var(--bg);
             color: var(--text);
         }
         .shell {
-            max-width: 1400px;
+            max-width: 1320px;
             margin: 0 auto;
-            padding: 18px;
         }
-        .hero {
+        .topbar {
             display: flex;
             justify-content: space-between;
-            gap: 16px;
-            align-items: flex-start;
-            margin-bottom: 18px;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
         }
-        .hero h1 {
+        .title h1 {
             margin: 0;
-            font-size: clamp(2rem, 4vw, 3.2rem);
-            letter-spacing: 0.04em;
+            font-size: 1.8rem;
         }
-        .hero p {
-            margin: 8px 0 0;
+        .title p {
+            margin: 6px 0 0;
             color: var(--muted);
-            max-width: 760px;
+            font-size: 0.95rem;
         }
-        .pill {
+        .status-pill {
             padding: 10px 14px;
+            border: 1px solid var(--border);
             border-radius: 999px;
-            border: 1px solid rgba(63, 224, 171, 0.26);
-            background: rgba(63, 224, 171, 0.1);
+            background: var(--panel);
             white-space: nowrap;
         }
         .layout {
             display: grid;
-            grid-template-columns: 1.25fr 0.95fr;
-            gap: 18px;
+            grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+            gap: 16px;
+        }
+        .panel, .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
         }
         .panel {
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 24px;
-            box-shadow: var(--shadow);
-            overflow: hidden;
+            padding: 14px;
         }
-        .panel-inner {
-            padding: 18px;
+        .card {
+            padding: 12px;
+            margin-bottom: 12px;
+            background: var(--panel-2);
         }
-        .stream-wrap {
-            position: relative;
-            background: #000;
-            border-radius: 18px;
-            overflow: hidden;
-        }
-        .stream-wrap img {
-            display: block;
+        .stream {
             width: 100%;
-            min-height: 320px;
             background: #000;
+            border-radius: 8px;
+            min-height: 300px;
             object-fit: contain;
         }
-        .overlay {
-            position: absolute;
-            left: 14px;
-            bottom: 14px;
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        .overlay .pill {
-            background: rgba(7, 16, 18, 0.8);
-            border-color: rgba(255, 255, 255, 0.08);
-            font-size: 0.92rem;
-        }
-        .grid {
+        .stats, .mode-row, .btn-row, .pad {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-top: 14px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin: 8px 0;
+        }
+        .pad {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        button, input[type="range"] {
+            width: 100%;
+        }
+        button {
+            min-height: 48px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #252a2f;
+            color: var(--text);
+            font-weight: 700;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #2b3137;
+        }
+        button.active {
+            outline: 2px solid var(--accent);
+            outline-offset: 0;
+            background: #313944;
+        }
+        button.primary {
+            border-color: #3b6ea8;
+        }
+        button.danger {
+            border-color: #7d3b38;
+            background: #3a2423;
+        }
+        button.ok {
+            border-color: #3e6f4d;
+            background: #233126;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+        .meta {
+            color: var(--muted);
+            font-size: 0.92rem;
+            margin-top: 8px;
         }
         .stat {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 18px;
-            padding: 12px;
+            background: #20252a;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
         }
         .stat label {
             display: block;
+            font-size: 0.82rem;
             color: var(--muted);
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
             margin-bottom: 6px;
         }
         .stat strong {
-            display: block;
-            font-size: 1.45rem;
+            font-size: 1.2rem;
         }
-        .cards {
-            display: grid;
-            gap: 14px;
-        }
-        .card {
-            background: rgba(255, 255, 255, 0.025);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 20px;
-            padding: 16px;
-        }
-        .card-head {
+        .section-title {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 10px;
             margin-bottom: 10px;
         }
-        .card-head h2 {
+        .section-title h2 {
             margin: 0;
             font-size: 1rem;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
         }
-        .card-head span {
+        .section-title span {
             color: var(--muted);
-            font-size: 0.92rem;
+            font-size: 0.9rem;
         }
-        input[type="range"] {
-            width: 100%;
-            accent-color: var(--accent);
+        .badge-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 8px 0 0;
         }
-        .btn-row {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 10px;
-            margin-top: 10px;
+        .badge {
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: #20252a;
+            color: var(--muted);
+            font-size: 0.86rem;
         }
-        .pad {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(70px, 1fr));
-            gap: 10px;
-        }
-        button {
-            min-height: 58px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            background: linear-gradient(180deg, rgba(28, 49, 53, 0.96), rgba(16, 29, 32, 0.98));
+        .badge.mode {
             color: var(--text);
-            font-size: 0.98rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: transform 100ms ease, border-color 100ms ease;
-            touch-action: manipulation;
+            border-color: #3b6ea8;
         }
-        button:hover { border-color: rgba(63, 224, 171, 0.28); }
-        button:active, button.active { transform: translateY(1px) scale(0.99); }
-        button.stop {
-            background: linear-gradient(180deg, rgba(73, 81, 86, 0.98), rgba(42, 50, 55, 0.98));
+        .badge.ai {
+            border-color: #5f6b7a;
         }
-        button.release {
-            background: linear-gradient(180deg, rgba(63, 224, 171, 0.95), rgba(30, 147, 113, 0.98));
-            color: #04100c;
+        a {
+            color: var(--accent);
         }
-        button.danger {
-            background: linear-gradient(180deg, rgba(223, 92, 80, 0.98), rgba(129, 37, 37, 0.98));
+        @media (max-width: 980px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
         }
-        pre {
-            margin: 0;
-            white-space: pre-wrap;
-            word-break: break-word;
-            color: var(--muted);
-            line-height: 1.5;
-        }
-        @media (max-width: 960px) {
-            .layout { grid-template-columns: 1fr; }
-            .grid { grid-template-columns: repeat(2, 1fr); }
-            .btn-row { grid-template-columns: repeat(2, 1fr); }
-        }
-        @media (max-width: 560px) {
-            .shell { padding: 12px; }
-            .hero { flex-direction: column; }
-            .grid, .btn-row { grid-template-columns: 1fr; }
+        @media (max-width: 720px) {
+            .stats, .mode-row, .btn-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .topbar {
+                flex-direction: column;
+                align-items: flex-start;
+            }
         }
     </style>
 </head>
 <body>
     <div class="shell">
-        <div class="hero">
-            <div>
-                <h1>JetCar YOLO Dashboard</h1>
-                <p>YOLO 객체 인식 영상과 수동 주행 제어를 한 화면에서 처리합니다. 브라우저만으로 조작 가능하고, `E-STOP`은 즉시 `/system/estop_cmd`로 전송됩니다.</p>
+        <div class="topbar">
+            <div class="title">
+                <h1>JetCar Dashboard</h1>
+                <p>YOLO 영상, 수동 제어, AI 개입 모드를 한 화면에서 확인합니다.</p>
             </div>
-            <div class="pill" id="connectState">Connecting...</div>
+            <div class="status-pill" id="connectState">Connecting...</div>
         </div>
 
         <div class="layout">
             <div class="panel">
-                <div class="panel-inner">
-                    <div class="stream-wrap">
-                        <img src="/stream" alt="YOLO stream">
-                        <div class="overlay">
-                            <div class="pill" id="overlayStatus">status</div>
-                            <div class="pill" id="overlayCamera">camera</div>
-                            <div class="pill" id="overlayModel">model</div>
-                        </div>
-                    </div>
-                    <div class="grid">
-                        <div class="stat"><label>Detections</label><strong id="detCount">0</strong></div>
-                        <div class="stat"><label>Hazard</label><strong id="hazardValue">false</strong></div>
-                        <div class="stat"><label>FPS</label><strong id="fpsValue">0.0</strong></div>
-                        <div class="stat"><label>Det FPS</label><strong id="detFpsValue">0.0</strong></div>
-                    </div>
+                <div class="section-title">
+                    <h2>Camera</h2>
+                    <span><a href="/stream" target="_blank" rel="noopener">Stream only</a></span>
                 </div>
+                <img class="stream" id="streamImage" alt="stream">
+                <div class="stats">
+                    <div class="stat"><label>Detections</label><strong id="detCount">0</strong></div>
+                    <div class="stat"><label>FPS</label><strong id="fpsValue">0.0</strong></div>
+                    <div class="stat"><label>Det FPS</label><strong id="detFpsValue">0.0</strong></div>
+                </div>
+                <pre id="visionText">Loading...</pre>
             </div>
 
-            <div class="panel">
-                <div class="panel-inner cards">
-                    <div class="card">
-                        <div class="card-head">
-                            <h2>Manual Control</h2>
-                            <span id="controlStatus">ready</span>
-                        </div>
-                        <div class="grid" style="grid-template-columns: repeat(3, 1fr); margin-top: 0;">
-                            <div class="stat"><label>Throttle</label><strong id="throttleValue">0.00</strong></div>
-                            <div class="stat"><label>Steering</label><strong id="steeringValue">0.00</strong></div>
-                            <div class="stat"><label>E-Stop</label><strong id="estopValue">OFF</strong></div>
-                        </div>
+            <div>
+                <div class="card">
+                    <div class="section-title">
+                        <h2>Drive Mode</h2>
+                        <span id="modeValue">MANUAL</span>
                     </div>
+                    <div class="badge-row">
+                        <div class="badge mode" id="selectedSourceBadge">selected: MANUAL</div>
+                        <div class="badge ai" id="safetyBadge">AI override: false</div>
+                    </div>
+                    <div class="mode-row">
+                        <button class="primary" data-mode="MANUAL">MANUAL</button>
+                        <button class="primary" data-mode="AI_INTERVENTION">AI INTERVENTION</button>
+                        <button class="primary" data-mode="AUTONOMOUS">AUTONOMOUS</button>
+                    </div>
+                </div>
 
-                    <div class="card">
-                        <div class="card-head">
-                            <h2>Throttle</h2>
-                            <span id="throttlePercent">0%</span>
-                        </div>
-                        <input id="throttleSlider" type="range" min="-100" max="100" value="0" step="1">
-                        <div class="btn-row">
-                            <button data-throttle="-40">REV 40%</button>
-                            <button data-throttle="-20">REV 20%</button>
-                            <button class="stop" data-action="stop">STOP</button>
-                            <button data-throttle="20">FWD 20%</button>
-                            <button data-throttle="40">FWD 40%</button>
-                        </div>
+                <div class="card">
+                    <div class="section-title">
+                        <h2>Throttle</h2>
+                        <span id="throttleValue">0.00</span>
                     </div>
+                    <input id="throttleSlider" type="range" min="-100" max="100" value="0" step="1">
+                    <div class="btn-row">
+                        <button data-throttle="-40">REV 40%</button>
+                        <button data-throttle="-20">REV 20%</button>
+                        <button data-action="stop">STOP</button>
+                        <button data-throttle="20">FWD 20%</button>
+                        <button data-throttle="40">FWD 40%</button>
+                    </div>
+                </div>
 
-                    <div class="card">
-                        <div class="card-head">
-                            <h2>Steering</h2>
-                            <span id="steeringPercent">0%</span>
-                        </div>
-                        <input id="steeringSlider" type="range" min="-100" max="100" value="0" step="1">
-                        <div class="btn-row">
-                            <button data-steering="-100">HARD L</button>
-                            <button data-steering="-40">LEFT</button>
-                            <button class="stop" data-action="center">CENTER</button>
-                            <button data-steering="40">RIGHT</button>
-                            <button data-steering="100">HARD R</button>
-                        </div>
+                <div class="card">
+                    <div class="section-title">
+                        <h2>Steering</h2>
+                        <span id="steeringValue">0.00</span>
                     </div>
+                    <input id="steeringSlider" type="range" min="-100" max="100" value="0" step="1">
+                    <div class="btn-row">
+                        <button data-steering="-100">HARD L</button>
+                        <button data-steering="-40">LEFT</button>
+                        <button data-action="center">CENTER</button>
+                        <button data-steering="40">RIGHT</button>
+                        <button data-steering="100">HARD R</button>
+                    </div>
+                </div>
 
-                    <div class="card">
-                        <div class="card-head">
-                            <h2>Touch Drive Pad</h2>
-                            <span>press and hold</span>
-                        </div>
-                        <div class="pad">
-                            <div></div>
-                            <button data-key="w">Forward</button>
-                            <div></div>
-                            <button data-key="a">Left</button>
-                            <button class="stop" data-key="x">Brake</button>
-                            <button data-key="d">Right</button>
-                            <div></div>
-                            <button data-key="s">Reverse</button>
-                            <div></div>
-                        </div>
+                <div class="card">
+                    <div class="section-title">
+                        <h2>Quick Control</h2>
+                        <span>Keyboard Enabled</span>
                     </div>
+                    <div class="pad">
+                        <div></div>
+                        <button data-key="w">W</button>
+                        <div></div>
+                        <button data-key="a">A</button>
+                        <button data-key="x">X</button>
+                        <button data-key="d">D</button>
+                        <div></div>
+                        <button data-key="s">S</button>
+                        <div></div>
+                    </div>
+                    <div class="meta">Keyboard: `W/S` throttle, `A/D` steering, `X` brake, `C` center, `E` estop, `R` release</div>
+                </div>
 
-                    <div class="card">
-                        <div class="card-head">
-                            <h2>Drive Mode</h2>
-                            <span id="modeValue">MANUAL</span>
-                        </div>
-                        <div class="btn-row">
-                            <button data-mode="MANUAL">MANUAL</button>
-                            <button data-mode="AI_INTERVENTION">AI INTERVENTION</button>
-                            <button data-mode="AUTONOMOUS">AUTONOMOUS</button>
-                        </div>
-                        <pre id="safetyText">safety=unknown</pre>
+                <div class="card">
+                    <div class="btn-row">
+                        <button class="danger" data-action="estop">E-STOP</button>
+                        <button class="ok" data-action="release">RELEASE</button>
+                        <button data-action="reset-all">RESET</button>
                     </div>
-
-                    <div class="card">
-                        <div class="card-head">
-                            <h2>Safety</h2>
-                            <span>Immediate action</span>
-                        </div>
-                        <div class="btn-row">
-                            <button class="danger" data-action="estop">E-STOP</button>
-                            <button class="release" data-action="release">RELEASE</button>
-                            <button class="stop" data-action="reset-all">RESET ALL</button>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-head">
-                            <h2>System</h2>
-                            <span>Live state</span>
-                        </div>
-                        <pre id="systemText">Loading...</pre>
-                    </div>
+                    <pre id="controlText">Loading...</pre>
                 </div>
             </div>
         </div>
+        <div class="meta">다른 기기에서 접속할 때는 `127.0.0.1`이 아니라 Jetson IP를 사용해야 합니다.</div>
     </div>
 
     <script>
+        document.getElementById('streamImage').src = '/stream?ts=' + Date.now();
+
         const throttleSlider = document.getElementById('throttleSlider');
         const steeringSlider = document.getElementById('steeringSlider');
-        const throttleValue = document.getElementById('throttleValue');
-        const steeringValue = document.getElementById('steeringValue');
-        const estopValue = document.getElementById('estopValue');
-        const throttlePercent = document.getElementById('throttlePercent');
-        const steeringPercent = document.getElementById('steeringPercent');
-        const controlStatus = document.getElementById('controlStatus');
-        const connectState = document.getElementById('connectState');
-        const systemText = document.getElementById('systemText');
-        const modeValue = document.getElementById('modeValue');
-        const safetyText = document.getElementById('safetyText');
 
         async function fetchJson(url, options) {
-            const response = await fetch(url, options);
-            return response.json();
+            const res = await fetch(url, options);
+            return res.json();
         }
 
         function updateVision(data) {
             document.getElementById('detCount').textContent = data.detection_count;
-            document.getElementById('hazardValue').textContent = String(data.hazard);
             document.getElementById('fpsValue').textContent = Number(data.fps).toFixed(1);
             document.getElementById('detFpsValue').textContent = Number(data.detection_fps).toFixed(1);
-            document.getElementById('overlayStatus').textContent = data.status;
-            document.getElementById('overlayCamera').textContent = data.camera_source;
-            document.getElementById('overlayModel').textContent = data.model_path;
-            systemText.textContent =
+            document.getElementById('visionText').textContent =
                 `ready=${data.ready}\n` +
-                `model_loaded=${data.model_loaded}\n` +
                 `camera=${data.camera_source}\n` +
                 `model=${data.model_path}\n` +
-                `confidence=${Number(data.confidence).toFixed(2)}\n` +
+                `hazard=${data.hazard}\n` +
                 `status=${data.status}`;
         }
 
         function updateControl(data) {
-            throttleValue.textContent = Number(data.throttle).toFixed(2);
-            steeringValue.textContent = Number(data.steering).toFixed(2);
-            estopValue.textContent = data.estop ? 'ON' : 'OFF';
+            document.getElementById('modeValue').textContent = data.drive_mode;
+            document.getElementById('throttleValue').textContent = Number(data.throttle).toFixed(2);
+            document.getElementById('steeringValue').textContent = Number(data.steering).toFixed(2);
+            document.getElementById('selectedSourceBadge').textContent = `selected: ${data.selected_source}`;
+            document.getElementById('safetyBadge').textContent = `AI override: ${data.safety_override}`;
             throttleSlider.value = Math.round(Number(data.throttle) * 100);
             steeringSlider.value = Math.round(Number(data.steering) * 100);
-            throttlePercent.textContent = `${Math.round(Number(data.throttle) * 100)}%`;
-            steeringPercent.textContent = `${Math.round(Number(data.steering) * 100)}%`;
-            controlStatus.textContent = data.status;
-            modeValue.textContent = data.drive_mode;
-            safetyText.textContent =
+            document.getElementById('controlText').textContent =
                 `mode=${data.drive_mode}\n` +
                 `selected=${data.selected_source}\n` +
+                `estop=${data.estop}\n` +
                 `safety_override=${data.safety_override}\n` +
-                `safety_reason=${data.safety_reason}\n` +
-                `depth_ready=${data.depth_ready}\n` +
-                `min_distance_m=${Number(data.min_distance_m).toFixed(2)}`;
+                `reason=${data.safety_reason}\n` +
+                `distance=${Number(data.min_distance_m).toFixed(2)}\n` +
+                `status=${data.status}`;
         }
 
         async function refreshAll() {
@@ -474,10 +429,9 @@ HTML_PAGE = """
                 ]);
                 updateVision(vision);
                 updateControl(control);
-                connectState.textContent = 'Connected';
-            } catch (error) {
-                connectState.textContent = 'Disconnected';
-                systemText.textContent = 'poll failed: ' + error;
+                document.getElementById('connectState').textContent = 'Connected';
+            } catch (e) {
+                document.getElementById('connectState').textContent = 'Disconnected';
             }
         }
 
@@ -490,19 +444,12 @@ HTML_PAGE = """
             updateControl(data);
         }
 
-        throttleSlider.addEventListener('input', function() {
-            throttlePercent.textContent = `${throttleSlider.value}%`;
-        });
-        steeringSlider.addEventListener('input', function() {
-            steeringPercent.textContent = `${steeringSlider.value}%`;
-        });
         throttleSlider.addEventListener('change', function() {
             postControl('/api/set_control_state', {throttle: Number(throttleSlider.value) / 100.0});
         });
         steeringSlider.addEventListener('change', function() {
             postControl('/api/set_control_state', {steering: Number(steeringSlider.value) / 100.0});
         });
-
         document.querySelectorAll('[data-throttle]').forEach(function(button) {
             button.addEventListener('click', function() {
                 postControl('/api/set_control_state', {throttle: Number(button.dataset.throttle) / 100.0});
@@ -513,97 +460,79 @@ HTML_PAGE = """
                 postControl('/api/set_control_state', {steering: Number(button.dataset.steering) / 100.0});
             });
         });
-        document.querySelectorAll('[data-action]').forEach(function(button) {
-            button.addEventListener('click', function() {
-                const action = button.dataset.action;
-                if (action === 'stop') {
-                    postControl('/api/set_control_state', {throttle: 0.0});
-                } else if (action === 'center') {
-                    postControl('/api/set_control_state', {steering: 0.0});
-                } else if (action === 'reset-all') {
-                    postControl('/api/set_control_state', {throttle: 0.0, steering: 0.0});
-                } else if (action === 'estop') {
-                    postControl('/api/control_command', {key: 'e'});
-                } else if (action === 'release') {
-                    postControl('/api/control_command', {key: 'r'});
-                }
-            });
-        });
         document.querySelectorAll('[data-mode]').forEach(function(button) {
             button.addEventListener('click', function() {
                 postControl('/api/set_drive_mode', {mode: button.dataset.mode});
             });
         });
+        document.querySelectorAll('[data-action]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                const action = button.dataset.action;
+                if (action === 'stop') postControl('/api/set_control_state', {throttle: 0.0});
+                else if (action === 'center') postControl('/api/set_control_state', {steering: 0.0});
+                else if (action === 'reset-all') postControl('/api/set_control_state', {throttle: 0.0, steering: 0.0});
+                else if (action === 'estop') postControl('/api/control_command', {key: 'e'});
+                else if (action === 'release') postControl('/api/control_command', {key: 'r'});
+            });
+        });
+        document.querySelectorAll('[data-key]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                postControl('/api/control_command', {key: button.dataset.key});
+            });
+        });
 
         const repeatKeys = new Set(['w', 'a', 's', 'd']);
-        const singleKeys = new Set(['x', 'e', 'r', 'c']);
+        const singleKeys = new Set(['x', 'c', 'e', 'r']);
         const activeKeys = new Set();
 
-        function pressKey(key) {
-            if (repeatKeys.has(key)) {
-                if (!activeKeys.has(key)) {
-                    activeKeys.add(key);
-                    postControl('/api/control_command', {key});
-                }
-            } else if (singleKeys.has(key)) {
-                postControl('/api/control_command', {key});
-            }
-        }
-
-        function releaseKey(key) {
-            activeKeys.delete(key);
+        function markKey(key, active) {
             document.querySelectorAll(`[data-key="${key}"]`).forEach(function(button) {
-                button.classList.remove('active');
+                button.classList.toggle('active', active);
             });
         }
 
-        setInterval(function() {
-            activeKeys.forEach(function(key) {
-                postControl('/api/control_command', {key});
-            });
-        }, 80);
+        function sendKey(key) {
+            postControl('/api/control_command', {key: key});
+        }
 
         document.addEventListener('keydown', function(event) {
             const key = event.key.toLowerCase();
-            if (repeatKeys.has(key) || singleKeys.has(key)) {
-                event.preventDefault();
-                pressKey(key);
-                document.querySelectorAll(`[data-key="${key}"]`).forEach(function(button) {
-                    button.classList.add('active');
-                });
+            if (!(repeatKeys.has(key) || singleKeys.has(key))) {
+                return;
             }
-        });
-        document.addEventListener('keyup', function(event) {
-            releaseKey(event.key.toLowerCase());
-        });
-
-        document.querySelectorAll('button[data-key]').forEach(function(button) {
-            const key = button.dataset.key;
-            const start = function(event) {
-                event.preventDefault();
-                pressKey(key);
-                button.classList.add('active');
-            };
-            const end = function(event) {
-                if (event) {
-                    event.preventDefault();
+            event.preventDefault();
+            if (repeatKeys.has(key)) {
+                if (activeKeys.has(key)) {
+                    return;
                 }
-                releaseKey(key);
-            };
-            button.addEventListener('pointerdown', start);
-            button.addEventListener('pointerup', end);
-            button.addEventListener('pointercancel', end);
-            button.addEventListener('pointerleave', end);
+                activeKeys.add(key);
+            }
+            markKey(key, true);
+            sendKey(key);
         });
 
-        setInterval(refreshAll, 1000);
+        document.addEventListener('keyup', function(event) {
+            const key = event.key.toLowerCase();
+            if (!(repeatKeys.has(key) || singleKeys.has(key))) {
+                return;
+            }
+            event.preventDefault();
+            activeKeys.delete(key);
+            markKey(key, false);
+        });
+
+        setInterval(function() {
+            activeKeys.forEach(function(key) {
+                sendKey(key);
+            });
+        }, 90);
+
+        setInterval(refreshAll, 500);
         refreshAll();
     </script>
 </body>
 </html>
 """
-
-
 class YoloWebNode(Node):
     def __init__(self):
         super().__init__('yolo_web_node')
