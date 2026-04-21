@@ -2,6 +2,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+import re
 
 import cv2
 import numpy as np
@@ -528,18 +529,20 @@ class YoloWebNode(Node):
         self.declare_parameter('model_path', 'auto')
         self.declare_parameter('target_classes', ['person', 'car', 'stop sign'])
         self.declare_parameter('confidence_threshold', 0.4)
-        self.declare_parameter('image_size', 640)
+        self.declare_parameter('image_size', 320)
         self.declare_parameter('publish_rate_hz', 10.0)
-        self.declare_parameter('jpeg_quality', 80)
+        self.declare_parameter('jpeg_quality', 70)
         self.declare_parameter('camera_width', 1280)
         self.declare_parameter('camera_height', 720)
-        self.declare_parameter('camera_fps', 30)
+        self.declare_parameter('camera_fps', 60)
         self.declare_parameter('stream_width', 640)
         self.declare_parameter('stream_height', 360)
         self.declare_parameter('stream_delay_ms', 5)
         self.declare_parameter('camera_retry_sec', 1.5)
         self.declare_parameter('camera_read_failures_before_reopen', 5)
-        self.declare_parameter('detection_rate_hz', 8.0)
+        self.declare_parameter('detection_rate_hz', 4.0)
+        self.declare_parameter('inference_device', 'cuda:0')
+        self.declare_parameter('prefer_half', True)
         self.declare_parameter('throttle_step', 0.1)
         self.declare_parameter('steering_step_cmd', 0.2)
 
@@ -566,6 +569,8 @@ class YoloWebNode(Node):
             1, int(self.get_parameter('camera_read_failures_before_reopen').value)
         )
         self.detection_rate_hz = float(self.get_parameter('detection_rate_hz').value)
+        self.inference_device = str(self.get_parameter('inference_device').value).strip()
+        self.prefer_half = bool(self.get_parameter('prefer_half').value)
         self.throttle_step = float(self.get_parameter('throttle_step').value)
         self.steering_step_cmd = float(self.get_parameter('steering_step_cmd').value)
 
@@ -591,6 +596,7 @@ class YoloWebNode(Node):
         self.model_loaded = False
         self.model_error = ''
         self.active_model_path = ''
+        self.model_runtime = 'uninitialized'
         self.model_search_paths = []
         self.active_camera_source = ''
         self.latest_detections = []
@@ -743,10 +749,23 @@ class YoloWebNode(Node):
 
     def load_model(self):
         try:
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.backends.cudnn.benchmark = True
+            except Exception:
+                pass
+
             from ultralytics import YOLO
 
             model_path = self.resolve_model_path()
             model = YOLO(model_path)
+            runtime_bits = [Path(model_path).suffix.lstrip('.').lower() or 'model']
+            if self.inference_device:
+                runtime_bits.append(self.inference_device)
+            if self.prefer_half and str(model_path).lower().endswith('.pt'):
+                runtime_bits.append('half')
+            self.model_runtime = ', '.join(runtime_bits)
             self.model_loaded = True
             self.active_model_path = model_path
             self.latest_status = 'model loaded'
@@ -756,6 +775,7 @@ class YoloWebNode(Node):
             self.model_loaded = False
             searched = ', '.join(self.model_search_paths)
             self.model_error = self.format_model_error(exc, searched)
+            self.model_runtime = 'unavailable'
             self.latest_status = f'model unavailable: {self.model_error}'
             self.get_logger().warning(self.latest_status)
             return None
@@ -814,9 +834,24 @@ class YoloWebNode(Node):
 
         return roots
 
+    def parse_sensor_id(self, value, default=None):
+        if default is None:
+            default = self.camera_sensor_id
+        if value is None:
+            return max(0, int(default))
+        text = str(value).strip()
+        if not text:
+            return max(0, int(default))
+        match = re.search(r'-?\d+', text)
+        if match is None:
+            return max(0, int(default))
+        try:
+            return max(0, int(match.group(0)))
+        except ValueError:
+            return max(0, int(default))
+
     def make_csi_pipeline(self, sensor_id=None):
-        if sensor_id is None:
-            sensor_id = self.camera_sensor_id
+        sensor_id = self.parse_sensor_id(sensor_id, self.camera_sensor_id)
         return (
             f'nvarguscamerasrc sensor-id={sensor_id} ! '
             f'video/x-raw(memory:NVMM), width={self.camera_width}, height={self.camera_height}, '
@@ -860,7 +895,7 @@ class YoloWebNode(Node):
                 '1',
             ]
         if source.startswith('csi:'):
-            return [('csi', int(source.split(':', 1)[1]))]
+            return [('csi', self.parse_sensor_id(source.split(':', 1)[1], self.camera_sensor_id))]
         return [self.camera_source]
 
     def open_capture_candidate(self, source):
@@ -1012,8 +1047,17 @@ class YoloWebNode(Node):
         if now < self.next_detection_time:
             return
         self.next_detection_time = now + min_interval
+        if frame.shape[1] > 640:
+            scale = 640.0 / float(frame.shape[1])
+            resized = cv2.resize(
+                frame,
+                (640, max(1, int(round(frame.shape[0] * scale)))),
+                interpolation=cv2.INTER_AREA,
+            )
+        else:
+            resized = frame
         with self.detection_lock:
-            self.detector_frame = frame.copy()
+            self.detector_frame = resized.copy()
         self.detector_event.set()
 
     def detection_loop(self):
@@ -1086,6 +1130,8 @@ class YoloWebNode(Node):
             source=frame,
             conf=self.confidence_threshold,
             imgsz=self.image_size,
+            device=self.inference_device or None,
+            half=bool(self.prefer_half and str(self.active_model_path).lower().endswith('.pt')),
             verbose=False,
         )
         detections = []

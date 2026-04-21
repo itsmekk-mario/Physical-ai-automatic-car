@@ -27,6 +27,7 @@ setup(
             'stereo_depth_node = jetcar_perception.stereo_depth_node:main',
             'object_detection_node = jetcar_perception.object_detection_node:main',
             'yolo_web_node = jetcar_perception.yolo_web_node:main',
+            'yolo_engine_builder = jetcar_perception.yolo_engine_builder:main',
             'lane_detection_node = jetcar_perception.lane_detection_node:main',
         ],
     },
