@@ -2,10 +2,9 @@ yolo_web_node:
   ros__parameters:
     host: 0.0.0.0
     port: 8080
-    # Use "csi" for the Jetson CSI camera that previously worked.
-    # Use "auto" only when you intentionally want CSI->USB fallback probing.
-    # Use "0" or another device index for a USB camera.
-    camera_source: csi
+    # Prefer recovery over a hard fail: try CSI sensor 0/1 first, then USB 0/1.
+    # You can still force a source with csi, csi:1, 0, 1, or a full pipeline string.
+    camera_source: auto
     camera_backend: auto
     camera_sensor_id: 0
     camera_flip_method: 0
@@ -27,6 +26,8 @@ yolo_web_node:
     stream_width: 640
     stream_height: 360
     stream_delay_ms: 5
+    camera_retry_sec: 1.5
+    camera_read_failures_before_reopen: 5
     detection_rate_hz: 8.0
     throttle_step: 0.1
     steering_step_cmd: 0.2

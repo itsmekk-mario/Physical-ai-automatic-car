@@ -520,7 +520,7 @@ class YoloWebNode(Node):
 
         self.declare_parameter('host', '0.0.0.0')
         self.declare_parameter('port', 8080)
-        self.declare_parameter('camera_source', 'csi')
+        self.declare_parameter('camera_source', 'auto')
         self.declare_parameter('camera_backend', 'auto')
         self.declare_parameter('camera_sensor_id', 0)
         self.declare_parameter('camera_flip_method', 0)
@@ -537,6 +537,8 @@ class YoloWebNode(Node):
         self.declare_parameter('stream_width', 640)
         self.declare_parameter('stream_height', 360)
         self.declare_parameter('stream_delay_ms', 5)
+        self.declare_parameter('camera_retry_sec', 1.5)
+        self.declare_parameter('camera_read_failures_before_reopen', 5)
         self.declare_parameter('detection_rate_hz', 8.0)
         self.declare_parameter('throttle_step', 0.1)
         self.declare_parameter('steering_step_cmd', 0.2)
@@ -559,6 +561,10 @@ class YoloWebNode(Node):
         self.stream_width = int(self.get_parameter('stream_width').value)
         self.stream_height = int(self.get_parameter('stream_height').value)
         self.stream_delay = max(0.0, int(self.get_parameter('stream_delay_ms').value) / 1000.0)
+        self.camera_retry_sec = max(0.2, float(self.get_parameter('camera_retry_sec').value))
+        self.camera_read_failures_before_reopen = max(
+            1, int(self.get_parameter('camera_read_failures_before_reopen').value)
+        )
         self.detection_rate_hz = float(self.get_parameter('detection_rate_hz').value)
         self.throttle_step = float(self.get_parameter('throttle_step').value)
         self.steering_step_cmd = float(self.get_parameter('steering_step_cmd').value)
@@ -600,6 +606,7 @@ class YoloWebNode(Node):
         self.current_steering = 0.0
         self.estop_active = False
         self.control_status = 'ready'
+        self.camera_error_log = ''
 
         self.model = self.load_model()
         self.app = Flask(__name__)
@@ -622,6 +629,9 @@ class YoloWebNode(Node):
 
     def estop_state_cb(self, msg: Bool):
         self.estop_active = bool(msg.data)
+        if self.estop_active:
+            self.current_throttle = 0.0
+            self.current_steering = 0.0
         self.control_status = f'estop_state={self.estop_active}'
 
     def control_state_payload(self):
@@ -649,6 +659,22 @@ class YoloWebNode(Node):
         estop_msg = Bool()
         estop_msg.data = bool(self.estop_active)
         self.estop_pub.publish(estop_msg)
+
+    def publish_status_frame(self, text: str):
+        jpeg = self.encode_frame(self.make_status_frame(text))
+        with self.frame_lock:
+            self.latest_jpeg = jpeg
+            self.latest_frame_id += 1
+            self.latest_ready = False
+            self.latest_status = text
+
+    def update_camera_status(self, status: str, log_level: str = 'info', force_log: bool = False):
+        with self.frame_lock:
+            self.latest_ready = False
+            self.latest_status = status
+        if force_log or status != self.camera_error_log:
+            getattr(self.get_logger(), log_level)(status)
+            self.camera_error_log = status
 
     def handle_control_key(self, key: str):
         if key == 'w':
@@ -815,8 +841,9 @@ class YoloWebNode(Node):
                 capture.release()
                 continue
 
-            self.pending_frame = frame
+            self.pending_frame = self.normalize_frame(frame)
             self.active_camera_source = active_source
+            self.camera_error_log = ''
             self.get_logger().info(f'camera opened: {active_source}')
             return capture
 
@@ -832,6 +859,8 @@ class YoloWebNode(Node):
                 '0',
                 '1',
             ]
+        if source.startswith('csi:'):
+            return [('csi', int(source.split(':', 1)[1]))]
         return [self.camera_source]
 
     def open_capture_candidate(self, source):
@@ -893,59 +922,64 @@ class YoloWebNode(Node):
             capture.set(cv2.CAP_PROP_FPS, self.camera_fps)
 
     def capture_loop(self):
-        capture = self.open_capture()
-        if not capture.isOpened():
-            status = self.make_capture_unavailable_text()
-            jpeg = self.encode_frame(self.make_status_frame(status))
-            with self.frame_lock:
-                self.latest_status = status
-                self.latest_jpeg = jpeg
-            self.get_logger().error(self.latest_status)
-            return
-
-        last_time = time.monotonic()
         while not self.stop_event.is_set():
-            ok, frame = self.read_frame(capture)
-            if not ok or frame is None:
+            capture = self.open_capture()
+            if not capture.isOpened():
+                status = self.make_capture_unavailable_text()
+                self.publish_status_frame(status)
+                self.update_camera_status(status, log_level='error')
+                self.stop_event.wait(self.camera_retry_sec)
+                continue
+
+            last_time = time.monotonic()
+            read_failures = 0
+            while not self.stop_event.is_set():
+                ok, frame = self.read_frame(capture)
+                if not ok or frame is None:
+                    read_failures += 1
+                    if read_failures >= self.camera_read_failures_before_reopen:
+                        status = f'camera frame read failed, reopening: {self.active_camera_source}'
+                        self.publish_status_frame(status)
+                        self.update_camera_status(status, log_level='warning')
+                        break
+                    self.stop_event.wait(0.1)
+                    continue
+
+                read_failures = 0
+                frame = self.prepare_stream_frame(frame)
+                if self.model is not None:
+                    self.submit_detection_frame(frame)
+                    with self.detection_lock:
+                        detections = list(self.latest_detections)
+                    self.draw_detections(frame, detections)
+                else:
+                    cv2.putText(
+                        frame,
+                        'YOLO model unavailable',
+                        (20, 36),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (0, 0, 255),
+                        2,
+                        cv2.LINE_AA,
+                    )
+
+                now = time.monotonic()
+                elapsed = max(now - last_time, 0.001)
+                last_time = now
+                jpeg = self.encode_frame(frame)
+                if jpeg is None:
+                    continue
+
                 with self.frame_lock:
-                    self.latest_ready = False
-                    self.latest_status = 'camera frame read failed'
-                time.sleep(0.1)
-                continue
+                    self.latest_jpeg = jpeg
+                    self.latest_frame_id += 1
+                    self.latest_ready = True
+                    self.latest_fps = 1.0 / elapsed
 
-            frame = self.prepare_stream_frame(frame)
-            if self.model is not None:
-                self.submit_detection_frame(frame)
-                with self.detection_lock:
-                    detections = list(self.latest_detections)
-                self.draw_detections(frame, detections)
-            else:
-                cv2.putText(
-                    frame,
-                    'YOLO model unavailable',
-                    (20, 36),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.0,
-                    (0, 0, 255),
-                    2,
-                    cv2.LINE_AA,
-                )
-
-            now = time.monotonic()
-            elapsed = max(now - last_time, 0.001)
-            last_time = now
-            fps = 1.0 / elapsed
-            jpeg = self.encode_frame(frame)
-            if jpeg is None:
-                continue
-
-            with self.frame_lock:
-                self.latest_jpeg = jpeg
-                self.latest_frame_id += 1
-                self.latest_ready = True
-                self.latest_fps = fps
-
-        capture.release()
+            capture.release()
+            if not self.stop_event.is_set():
+                self.stop_event.wait(self.camera_retry_sec)
 
     def prepare_stream_frame(self, frame):
         frame = self.normalize_frame(frame)
@@ -1170,8 +1204,7 @@ class YoloWebNode(Node):
             while self.control_queue:
                 self.handle_control_key(self.control_queue.popleft())
             self.publish_control()
-            if self.estop_active:
-                self.publish_estop()
+            self.publish_estop()
 
         with self.frame_lock:
             ready = self.latest_ready
