@@ -1,10 +1,10 @@
 yolo_web_node:
   ros__parameters:
     host: 0.0.0.0
-    port: 8080
+    port: 8081
     # Prefer recovery over a hard fail: try CSI sensor 0/1 first, then USB 0/1.
     # You can still force a source with csi, csi:1, 0, 1, or a full pipeline string.
-    camera_source: auto
+    camera_source: csi:0
     camera_backend: auto
     camera_sensor_id: 0
     camera_flip_method: 0

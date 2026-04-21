@@ -47,12 +47,20 @@ class YoloEngineBuilderNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = None
+    exit_code = 0
     try:
         node = YoloEngineBuilderNode()
+    except Exception as exc:
+        exit_code = 1
+        if node is not None:
+            node.get_logger().error(f'engine export failed: {exc}')
+        else:
+            print(f'engine export failed: {exc}')
     finally:
         if node is not None:
             node.destroy_node()
         rclpy.shutdown()
+    raise SystemExit(exit_code)
 
 
 if __name__ == '__main__':

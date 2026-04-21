@@ -5,12 +5,73 @@ from pathlib import Path
 import re
 
 import cv2
+import gi
 import numpy as np
 import rclpy
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from flask import Flask, Response, jsonify, render_template_string, request
 from rclpy.node import Node
+from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, Float32, String
+
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst
+
+Gst.init(None)
+
+
+class GStreamerCapture:
+    def __init__(self, pipeline: str, sink_name: str = 'capture_sink'):
+        self.pipeline_text = pipeline
+        self.pipeline = Gst.parse_launch(pipeline)
+        self.appsink = self.pipeline.get_by_name(sink_name)
+        if self.appsink is None:
+            raise RuntimeError(f'appsink "{sink_name}" not found in pipeline')
+        self.appsink.set_property('emit-signals', False)
+        self.appsink.set_property('sync', False)
+        self.pipeline.set_state(Gst.State.PLAYING)
+        self.opened = True
+
+    def isOpened(self):
+        return self.opened
+
+    def read(self):
+        if not self.opened:
+            return False, None
+        sample = self.appsink.emit('try-pull-sample', 1_000_000_000)
+        if sample is None:
+            return False, None
+
+        buf = sample.get_buffer()
+        caps = sample.get_caps()
+        structure = caps.get_structure(0)
+        width = int(structure.get_value('width'))
+        height = int(structure.get_value('height'))
+        fmt = str(structure.get_value('format'))
+
+        ok, map_info = buf.map(Gst.MapFlags.READ)
+        if not ok:
+            return False, None
+
+        try:
+            channels = 4 if fmt == 'BGRx' else 3
+            frame = np.ndarray(
+                (height, width, channels),
+                dtype=np.uint8,
+                buffer=map_info.data,
+            ).copy()
+        finally:
+            buf.unmap(map_info)
+
+        if fmt == 'BGRx':
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+        return True, frame
+
+    def release(self):
+        if not self.opened:
+            return
+        self.opened = False
+        self.pipeline.set_state(Gst.State.NULL)
 
 
 HTML_PAGE = """
@@ -315,6 +376,19 @@ HTML_PAGE = """
 
                     <div class="card">
                         <div class="card-head">
+                            <h2>Drive Mode</h2>
+                            <span id="modeValue">MANUAL</span>
+                        </div>
+                        <div class="btn-row">
+                            <button data-mode="MANUAL">MANUAL</button>
+                            <button data-mode="AI_INTERVENTION">AI INTERVENTION</button>
+                            <button data-mode="AUTONOMOUS">AUTONOMOUS</button>
+                        </div>
+                        <pre id="safetyText">safety=unknown</pre>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-head">
                             <h2>Safety</h2>
                             <span>Immediate action</span>
                         </div>
@@ -348,6 +422,8 @@ HTML_PAGE = """
         const controlStatus = document.getElementById('controlStatus');
         const connectState = document.getElementById('connectState');
         const systemText = document.getElementById('systemText');
+        const modeValue = document.getElementById('modeValue');
+        const safetyText = document.getElementById('safetyText');
 
         async function fetchJson(url, options) {
             const response = await fetch(url, options);
@@ -380,6 +456,14 @@ HTML_PAGE = """
             throttlePercent.textContent = `${Math.round(Number(data.throttle) * 100)}%`;
             steeringPercent.textContent = `${Math.round(Number(data.steering) * 100)}%`;
             controlStatus.textContent = data.status;
+            modeValue.textContent = data.drive_mode;
+            safetyText.textContent =
+                `mode=${data.drive_mode}\n` +
+                `selected=${data.selected_source}\n` +
+                `safety_override=${data.safety_override}\n` +
+                `safety_reason=${data.safety_reason}\n` +
+                `depth_ready=${data.depth_ready}\n` +
+                `min_distance_m=${Number(data.min_distance_m).toFixed(2)}`;
         }
 
         async function refreshAll() {
@@ -443,6 +527,11 @@ HTML_PAGE = """
                 } else if (action === 'release') {
                     postControl('/api/control_command', {key: 'r'});
                 }
+            });
+        });
+        document.querySelectorAll('[data-mode]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                postControl('/api/set_drive_mode', {mode: button.dataset.mode});
             });
         });
 
@@ -527,6 +616,7 @@ class YoloWebNode(Node):
         self.declare_parameter('camera_flip_method', 0)
         self.declare_parameter('usb_fourcc', 'default')
         self.declare_parameter('model_path', 'auto')
+        self.declare_parameter('image_topic', '')
         self.declare_parameter('target_classes', ['person', 'car', 'stop sign'])
         self.declare_parameter('confidence_threshold', 0.4)
         self.declare_parameter('image_size', 320)
@@ -554,6 +644,7 @@ class YoloWebNode(Node):
         self.camera_flip_method = int(self.get_parameter('camera_flip_method').value)
         self.usb_fourcc = str(self.get_parameter('usb_fourcc').value).upper().strip()
         self.model_path = str(self.get_parameter('model_path').value)
+        self.image_topic = str(self.get_parameter('image_topic').value).strip()
         self.target_classes = [str(name) for name in self.get_parameter('target_classes').value]
         self.confidence_threshold = float(self.get_parameter('confidence_threshold').value)
         self.image_size = int(self.get_parameter('image_size').value)
@@ -581,7 +672,16 @@ class YoloWebNode(Node):
         self.manual_throttle_pub = self.create_publisher(Float32, '/input/manual/throttle', 10)
         self.manual_steering_pub = self.create_publisher(Float32, '/input/manual/steering', 10)
         self.estop_pub = self.create_publisher(Bool, '/system/estop_cmd', 10)
+        self.drive_mode_pub = self.create_publisher(String, '/system/drive_mode_cmd', 10)
         self.create_subscription(Bool, '/vehicle/emergency_stop_state', self.estop_state_cb, 10)
+        self.create_subscription(String, '/system/drive_mode', self.drive_mode_cb, 10)
+        self.create_subscription(String, '/system/selected_control_source', self.selected_source_cb, 10)
+        self.create_subscription(Bool, '/system/safety_override_active', self.safety_override_cb, 10)
+        self.create_subscription(String, '/system/safety_override_reason', self.safety_reason_cb, 10)
+        self.create_subscription(Float32, '/perception/depth/min_distance_m', self.min_distance_cb, 10)
+        self.create_subscription(Bool, '/perception/depth/ready', self.depth_ready_cb, 10)
+        if self.image_topic:
+            self.create_subscription(Image, self.image_topic, self.image_topic_cb, 10)
 
         self.frame_lock = threading.Lock()
         self.latest_jpeg = None
@@ -612,7 +712,15 @@ class YoloWebNode(Node):
         self.current_steering = 0.0
         self.estop_active = False
         self.control_status = 'ready'
+        self.drive_mode = 'MANUAL'
+        self.selected_source = 'UNKNOWN'
+        self.safety_override_active = False
+        self.safety_reason = 'clear'
+        self.min_distance_m = 99.0
+        self.depth_ready = False
         self.camera_error_log = ''
+        self.topic_frame_lock = threading.Lock()
+        self.topic_frame = None
 
         self.model = self.load_model()
         self.app = Flask(__name__)
@@ -640,12 +748,42 @@ class YoloWebNode(Node):
             self.current_steering = 0.0
         self.control_status = f'estop_state={self.estop_active}'
 
+    def drive_mode_cb(self, msg: String):
+        self.drive_mode = str(msg.data).upper().strip()
+
+    def selected_source_cb(self, msg: String):
+        self.selected_source = str(msg.data)
+
+    def safety_override_cb(self, msg: Bool):
+        self.safety_override_active = bool(msg.data)
+
+    def safety_reason_cb(self, msg: String):
+        self.safety_reason = str(msg.data)
+
+    def min_distance_cb(self, msg: Float32):
+        self.min_distance_m = float(msg.data)
+
+    def depth_ready_cb(self, msg: Bool):
+        self.depth_ready = bool(msg.data)
+
+    def image_topic_cb(self, msg: Image):
+        frame = self.image_to_bgr(msg)
+        with self.topic_frame_lock:
+            self.topic_frame = frame
+        self.active_camera_source = f'ros:{self.image_topic}'
+
     def control_state_payload(self):
         return {
             'ok': True,
             'throttle': float(self.current_throttle),
             'steering': float(self.current_steering),
             'estop': bool(self.estop_active),
+            'drive_mode': self.drive_mode,
+            'selected_source': self.selected_source,
+            'safety_override': bool(self.safety_override_active),
+            'safety_reason': self.safety_reason,
+            'min_distance_m': float(self.min_distance_m),
+            'depth_ready': bool(self.depth_ready),
             'status': self.control_status,
         }
 
@@ -665,6 +803,24 @@ class YoloWebNode(Node):
         estop_msg = Bool()
         estop_msg.data = bool(self.estop_active)
         self.estop_pub.publish(estop_msg)
+
+    def publish_drive_mode(self, mode: str):
+        msg = String()
+        msg.data = str(mode).upper().strip()
+        self.drive_mode_pub.publish(msg)
+        self.drive_mode = msg.data
+        self.control_status = f'drive_mode={msg.data}'
+
+    def image_to_bgr(self, msg: Image):
+        if msg.encoding not in ('bgr8', 'rgb8', 'mono8'):
+            raise ValueError(f'unsupported image encoding: {msg.encoding}')
+        channels = 1 if msg.encoding == 'mono8' else 3
+        frame = np.frombuffer(msg.data, dtype=np.uint8).reshape((msg.height, msg.width, channels))
+        if msg.encoding == 'rgb8':
+            return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        if msg.encoding == 'mono8':
+            return cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        return frame
 
     def publish_status_frame(self, text: str):
         jpeg = self.encode_frame(self.make_status_frame(text))
@@ -858,13 +1014,17 @@ class YoloWebNode(Node):
             f'framerate={self.camera_fps}/1, format=NV12 ! '
             f'nvvidconv flip-method={self.camera_flip_method} ! '
             'video/x-raw, format=BGRx ! videoconvert ! '
-            'video/x-raw, format=BGR ! appsink max-buffers=1 drop=true sync=false'
+            'video/x-raw, format=BGR ! appsink name=capture_sink max-buffers=1 drop=true sync=false'
         )
 
     def open_capture(self):
         errors = []
         for source in self.camera_candidates():
-            capture, active_source = self.open_capture_candidate(source)
+            try:
+                capture, active_source = self.open_capture_candidate(source)
+            except Exception as exc:
+                errors.append(f'{source}: {exc}')
+                continue
             if not capture.isOpened():
                 errors.append(f'{active_source}: not opened')
                 capture.release()
@@ -901,14 +1061,14 @@ class YoloWebNode(Node):
     def open_capture_candidate(self, source):
         if isinstance(source, tuple) and source[0] == 'csi':
             pipeline = self.make_csi_pipeline(sensor_id=source[1])
-            return cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER), pipeline
+            return GStreamerCapture(pipeline), pipeline
 
         source = str(source)
         if source.lower() in ('csi', 'nvargus', 'nvarguscamerasrc'):
             pipeline = self.make_csi_pipeline()
-            return cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER), pipeline
+            return GStreamerCapture(pipeline), pipeline
         if '!' in source or self.camera_backend == 'gstreamer':
-            return cv2.VideoCapture(source, cv2.CAP_GSTREAMER), source
+            return GStreamerCapture(source), source
         if source.isdigit():
             return self.open_usb_capture(int(source))
 
@@ -957,6 +1117,42 @@ class YoloWebNode(Node):
             capture.set(cv2.CAP_PROP_FPS, self.camera_fps)
 
     def capture_loop(self):
+        if self.image_topic:
+            last_time = time.monotonic()
+            waiting_logged = False
+            while not self.stop_event.is_set():
+                with self.topic_frame_lock:
+                    frame = None if self.topic_frame is None else self.topic_frame.copy()
+                    self.topic_frame = None
+                if frame is None:
+                    status = f'waiting for image topic: {self.image_topic}'
+                    self.publish_status_frame(status)
+                    self.update_camera_status(status, log_level='info', force_log=not waiting_logged)
+                    waiting_logged = True
+                    self.stop_event.wait(0.05)
+                    continue
+
+                waiting_logged = False
+                frame = self.prepare_stream_frame(frame)
+                if self.model is not None:
+                    self.submit_detection_frame(frame)
+                    with self.detection_lock:
+                        detections = list(self.latest_detections)
+                    self.draw_detections(frame, detections)
+
+                now = time.monotonic()
+                elapsed = max(now - last_time, 0.001)
+                last_time = now
+                jpeg = self.encode_frame(frame)
+                if jpeg is None:
+                    continue
+                with self.frame_lock:
+                    self.latest_jpeg = jpeg
+                    self.latest_frame_id += 1
+                    self.latest_ready = True
+                    self.latest_fps = 1.0 / elapsed
+            return
+
         while not self.stop_event.is_set():
             capture = self.open_capture()
             if not capture.isOpened():
@@ -1218,6 +1414,14 @@ class YoloWebNode(Node):
             data = request.get_json(silent=True) or {}
             with self.control_lock:
                 self.apply_control_patch(data)
+            return jsonify(self.control_state_payload())
+
+        @self.app.route('/api/set_drive_mode', methods=['POST'])
+        def api_set_drive_mode():
+            data = request.get_json(silent=True) or {}
+            mode = str(data.get('mode', 'MANUAL')).upper().strip()
+            if mode in ('MANUAL', 'AI_INTERVENTION', 'AUTONOMOUS'):
+                self.publish_drive_mode(mode)
             return jsonify(self.control_state_payload())
 
         @self.app.route('/stream', methods=['GET'])
