@@ -614,6 +614,11 @@ HTML_PAGE = """
         function releaseKey(key) {
             activeKeys.delete(key);
             markKey(key, false);
+            if (key === 'w' || key === 's') {
+                sendKey('x');
+            } else if (key === 'a' || key === 'd') {
+                sendKey('c');
+            }
         }
 
         document.addEventListener('keydown', function(event) {
@@ -632,6 +637,12 @@ HTML_PAGE = """
             }
             event.preventDefault();
             releaseKey(key);
+        });
+
+        window.addEventListener('blur', function() {
+            Array.from(activeKeys).forEach(function(key) {
+                releaseKey(key);
+            });
         });
 
         setInterval(function() {
