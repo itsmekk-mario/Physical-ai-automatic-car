@@ -27,7 +27,7 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 os.path.join(control_share, 'config', 'control.yaml'),
-                {'default_mode': 'MANUAL'},
+                {'default_mode': 'AUTONOMOUS'},
             ],
         ),
         Node(
@@ -37,7 +37,7 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 os.path.join(control_share, 'config', 'control.yaml'),
-                {'default_mode': 'MANUAL'},
+                {'default_mode': 'AUTONOMOUS'},
             ],
         ),
         Node(
@@ -87,7 +87,10 @@ def generate_launch_description():
             executable='autonomous_driver_node',
             name='autonomous_driver_node',
             output='screen',
-            parameters=[os.path.join(decision_share, 'config', 'autonomous_driver.yaml')],
+            parameters=[
+                os.path.join(decision_share, 'config', 'autonomous_driver.yaml'),
+                {'enabled_on_start': True},
+            ],
         ),
         Node(
             package='jetcar_research',

@@ -1,9 +1,11 @@
 object_detection_node:
   ros__parameters:
     engine_path: models/yolov8n.engine
+    image_topic: /sensors/stereo/left/image_raw
     target_classes:
       - person
       - car
       - stop sign
     confidence_threshold: 0.4
+    max_frame_age_sec: 0.5
     publish_rate_hz: 10.0

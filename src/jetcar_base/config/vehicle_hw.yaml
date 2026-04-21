@@ -4,8 +4,8 @@ vehicle_hw_node:
     i2c_address: 64
     steering_channel: 0
     servo_center_tick: 323
-    servo_min_tick: 270
-    servo_max_tick: 376
+    servo_min_tick: 236
+    servo_max_tick: 410
     servo_step_tick: 2
     servo_slew_tick_per_update: 8
     servo_update_period_sec: 0.02
