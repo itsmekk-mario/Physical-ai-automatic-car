@@ -1,21 +1,18 @@
 # Physical AI Automatic Car
 
-Jetson Orin Nano 기반 ROS 2 워크스페이스입니다. 저장소는 수동 조종, 하드웨어 제어, 인지, 안전 판단, 연구용 통합 실행까지 한 워크스페이스 안에서 다룹니다.
+Jetson Orin Nano 기반 ROS 2 워크스페이스입니다. 수동 조종, 스테레오 인지, YOLO 웹 뷰, 안전 정지, 연구용 통합 실행을 한 저장소에서 다룹니다.
 
-## Workspace Layout
+## 구성
 
 - `src/jetcar_base`: 차량 하드웨어 제어, 키보드 조종, 웹 조종
-- `src/jetcar_control`: 수동/AI/자율주행 입력 중재와 드라이브 모드 관리
-- `src/jetcar_perception`: 스테레오 카메라, 차선, 깊이, 객체 인지, YOLO 웹 뷰
-- `src/jetcar_decision`: 안전 감독과 자율주행 명령 생성
-- `src/jetcar_research`: 통합 실험 프로파일과 풀스택 실행
-- 루트 Python 스크립트: PCA9685/서보 직접 점검 및 캘리브레이션
+- `src/jetcar_control`: drive mode 관리, control mux
+- `src/jetcar_perception`: 스테레오 카메라, rectification, depth, lane/object detection, YOLO 웹 뷰
+- `src/jetcar_decision`: safety supervisor, autonomous driver
+- `src/jetcar_research`: 통합 실험 launch와 연구 프로파일
 
-## Prerequisites
+## 설치와 빌드
 
-- Ubuntu on Jetson
-- ROS 2 Python workspace capable of running `colcon`
-- Python packages and system packages used by the nodes:
+필수 패키지:
 
 ```bash
 sudo apt update
@@ -23,9 +20,7 @@ sudo apt install -y python3-smbus python3-opencv python3-flask python3-numpy
 pip install smbus2 ultralytics
 ```
 
-`ultralytics`는 YOLO 관련 기능에서 필요합니다. 하드웨어 제어는 PCA9685가 I2C bus `7`에 연결되어 있다는 현재 설정을 기준으로 합니다.
-
-## Build
+빌드:
 
 ```bash
 cd /home/kown/jetcar_ws
@@ -34,7 +29,7 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-매 새 터미널마다 아래는 다시 실행해야 합니다.
+새 터미널마다 다시:
 
 ```bash
 cd /home/kown/jetcar_ws
@@ -48,64 +43,37 @@ source install/setup.bash
 ros2 pkg list | grep jetcar_perception
 ```
 
-## How To Run
+## 자주 쓰는 실행
 
-### 1. Hardware Only
-
-차량 하드웨어 노드만 실행합니다.
+하드웨어만:
 
 ```bash
 ros2 launch jetcar_base hardware_only.launch.py
 ```
 
-### 2. Manual Keyboard Control
-
-키보드 입력과 제어 mux까지 포함한 수동 주행 스택입니다.
+키보드 수동 조종:
 
 ```bash
 ros2 launch jetcar_base manual_keyboard.launch.py
 ```
 
-### 3. Manual Web Control
-
-웹 조종 UI를 엽니다. 기본 포트는 `5000`입니다.
+웹 수동 조종:
 
 ```bash
 ros2 launch jetcar_base manual_web.launch.py
 ```
 
-원격 Jetson에 SSH 접속 중이면 포트 포워딩 후 브라우저에서 엽니다.
-
-```bash
-ssh -L 5000:localhost:5000 kown@JETCAR_IP
-```
-
 브라우저: `http://localhost:5000`
 
-### 4. Control Stack Only
-
-드라이브 모드 관리자와 제어 mux만 분리 실행합니다.
+제어 스택만:
 
 ```bash
 ros2 launch jetcar_control control_stack.launch.py
 ```
 
-### 5. Perception Pipelines
+## Perception Launch
 
-아래 perception launch는 모두 공통으로 다음을 함께 올립니다.
-
-- `vehicle_hw_node`
-- `drive_mode_manager_node`
-- `control_mux_node`
-- `yolo_web_node`
-
-웹 대시보드:
-
-```text
-http://localhost:8081
-```
-
-웹 화면은 좌우 스테레오 뷰를 나란히 보여주며, YOLO 검출은 왼쪽 영상 기준으로 표시합니다.
+아래 perception launch는 공통으로 웹 뷰와 기본 control stack을 함께 올립니다. 웹 대시보드는 `http://localhost:8081`입니다.
 
 스테레오 카메라:
 
@@ -137,11 +105,11 @@ ros2 launch jetcar_perception lane_detection.launch.py
 ros2 launch jetcar_perception object_detection.launch.py
 ```
 
-### 6. YOLO Web View
+## YOLO Web View
 
-기본 설정은 `src/jetcar_perception/config/yolo_web_stereo.yaml`을 사용합니다.
+기본 설정은 `src/jetcar_perception/config/yolo_web_stereo.yaml`입니다. 웹 화면은 좌우 스테레오 영상을 나란히 보여주고, YOLO 박스는 왼쪽 영상 기준으로 표시합니다.
 
-모델 파일은 아래 둘 중 하나를 준비하면 됩니다.
+모델 파일은 둘 중 하나를 준비하면 됩니다.
 
 ```text
 /home/kown/jetcar_ws/models/yolov8n.engine
@@ -154,43 +122,78 @@ ros2 launch jetcar_perception object_detection.launch.py
 ros2 launch jetcar_perception yolo_web.launch.py
 ```
 
-이 launch는 스테레오 카메라, control stack, safety supervisor, 웹 UI를 함께 올립니다.
+브라우저: `http://localhost:8081`
 
-`AI_INTERVENTION` 모드에서 사람이 감지되면 자동 감속/정지 경로가 작동합니다.
-
-원격 접속 예시:
+원격 Jetson 접속 예시:
 
 ```bash
 ssh -L 8081:localhost:8081 kown@JETCAR_IP
 ```
 
-브라우저: `http://localhost:8081`
+## AI Intervention
 
-### 7. Decision Nodes
+`AI_INTERVENTION` 모드에서는 사람이 감지되면 자동 감속 및 정지 경로가 동작합니다. `yolo_web.launch.py`와 perception launch에서 이 동작을 바로 사용할 수 있습니다.
 
-안전 감독만:
+보는 토픽:
+
+```bash
+ros2 topic echo /perception/detections/person_detected
+ros2 topic echo /system/estop_cmd
+ros2 topic echo /vehicle/emergency_stop
+```
+
+## 스테레오 파이프라인 점검
+
+스테레오 카메라:
+
+```bash
+ros2 topic hz /sensors/stereo/left/image_raw
+ros2 topic hz /sensors/stereo/right/image_raw
+ros2 topic echo /sensors/stereo/status
+```
+
+Rectification:
+
+```bash
+ros2 topic hz /sensors/stereo/left/image_rect
+ros2 topic hz /sensors/stereo/right/image_rect
+ros2 topic echo /sensors/stereo/rectified/ready
+```
+
+Depth:
+
+```bash
+ros2 topic echo /perception/depth/status
+ros2 topic echo /perception/depth/min_distance_m
+```
+
+## Decision / Research
+
+Safety supervisor만:
 
 ```bash
 ros2 launch jetcar_decision ai_intervention.launch.py
 ```
 
-별도 실행보다는 보통 `yolo_web.launch.py` 또는 perception launch 안에 포함된 safety supervisor를 그대로 사용하는 편이 간단합니다.
-
-자율주행 드라이버만:
+Autonomous driver만:
 
 ```bash
 ros2 launch jetcar_decision autonomous_driver.launch.py
 ```
 
-### 8. Full Autonomous Research Stack
-
-전체 스택 실행:
+전체 연구 스택:
 
 ```bash
 ros2 launch jetcar_research full_autonomous.launch.py
 ```
 
-실행 직후 모터가 돌지 않도록 바퀴를 띄운 상태에서 먼저 아래 토픽을 확인하는 것이 안전합니다.
+연구 비교 launch:
+
+```bash
+ros2 launch jetcar_research research_compare.launch.py
+```
+
+자율주행 상태 확인:
 
 ```bash
 ros2 topic echo /autonomy/status
@@ -205,7 +208,7 @@ ros2 topic pub --once /system/autonomy_enable std_msgs/msg/Bool "{data: true}"
 ros2 topic pub --once /system/drive_mode_cmd std_msgs/msg/String "{data: AUTONOMOUS}"
 ```
 
-즉시 수동 안전 상태로 복귀:
+즉시 수동 복귀:
 
 ```bash
 ros2 topic pub --once /system/autonomy_enable std_msgs/msg/Bool "{data: false}"
@@ -213,100 +216,42 @@ ros2 topic pub --once /system/drive_mode_cmd std_msgs/msg/String "{data: MANUAL}
 ros2 topic pub --once /system/estop_cmd std_msgs/msg/Bool "{data: true}"
 ```
 
-### 9. Research Profile Node
+## 유틸리티 스크립트
 
-```bash
-ros2 launch jetcar_research research_compare.launch.py
-```
-
-## Direct Utility Scripts
-
-루트의 스크립트들은 ROS 2 launch가 아니라 Python으로 직접 실행합니다. 모두 PCA9685와 I2C bus `7` 접근이 가능해야 합니다.
-
-서보 직접 테스트:
+루트 스크립트는 ROS 2 launch가 아니라 Python으로 직접 실행합니다.
 
 ```bash
 python3 test_servo_direct.py
-```
-
-서보 고정 위치 점검:
-
-```bash
 python3 servo_hold_test.py
-```
-
-서보 raw tick 캘리브레이션:
-
-```bash
 python3 servo_calibrate_raw.py
-```
-
-서보 수동 미세 조정:
-
-```bash
 python3 servo_manual_step.py
 ```
 
-## Configuration Files
+## 주요 설정 파일
 
-- `src/jetcar_base/config/vehicle_hw.yaml`: I2C bus, PCA9685 채널, 서보/모터 제한값
-- `src/jetcar_base/config/manual_web.yaml`: 웹 제어 포트와 입력 step
-- `src/jetcar_control/config/control.yaml`: 기본 드라이브 모드와 throttle 제한
-- `src/jetcar_perception/config/stereo_camera.yaml`: 스테레오 카메라 입력과 publish 해상도
-- `src/jetcar_perception/config/stereo_rectification.yaml`: rectification 기본 파라미터
+- `src/jetcar_base/config/vehicle_hw.yaml`: I2C bus, PCA9685, servo/motor 제한값
+- `src/jetcar_base/config/manual_web.yaml`: 웹 조종 포트와 입력 step
+- `src/jetcar_control/config/control.yaml`: drive mode와 throttle 제한
+- `src/jetcar_perception/config/stereo_camera.yaml`: 스테레오 카메라 입력, publish 해상도, fps
+- `src/jetcar_perception/config/stereo_rectification.yaml`: rectification 파라미터
 - `src/jetcar_perception/config/stereo_depth.yaml`: depth 추정 파라미터
-- `src/jetcar_perception/config/object_detection.yaml`: YOLO 객체 인지 설정
+- `src/jetcar_perception/config/object_detection.yaml`: YOLO detection 설정
 - `src/jetcar_perception/config/yolo_web_stereo.yaml`: 8081 스테레오 웹 뷰 설정
-- `src/jetcar_decision/config/*.yaml`: 안전 정지 거리, 자율주행 gain과 throttle
-- `src/jetcar_research/config/research_profiles.yaml`: 연구 프로파일 설정
+- `src/jetcar_decision/config/*.yaml`: safety, autonomy 관련 파라미터
+- `src/jetcar_research/config/research_profiles.yaml`: 연구 프로파일
 
-## Quick Checks
+## 안전
 
-스테레오 카메라 토픽 확인:
+- 실제 주행 전에는 반드시 바퀴를 띄운 상태에서 먼저 테스트합니다.
+- 하드웨어 배선이 다르면 `vehicle_hw.yaml`부터 확인해야 합니다.
+- 웹 조종과 자율주행은 실제 모터 출력을 만들 수 있으므로 `estop` 토픽 절차를 먼저 확인하십시오.
 
-```bash
-ros2 topic hz /sensors/stereo/left/image_raw
-ros2 topic hz /sensors/stereo/right/image_raw
-ros2 topic echo /sensors/stereo/status
-```
-
-보정 토픽 확인:
-
-```bash
-ros2 topic hz /sensors/stereo/left/image_rect
-ros2 topic hz /sensors/stereo/right/image_rect
-ros2 topic echo /sensors/stereo/rectified/ready
-```
-
-깊이 토픽 확인:
-
-```bash
-ros2 topic echo /perception/depth/status
-ros2 topic echo /perception/depth/min_distance_m
-```
-
-사람 감지 자동 정지 확인:
-
-```bash
-ros2 topic echo /perception/detections/person_detected
-ros2 topic echo /system/estop_cmd
-ros2 topic echo /vehicle/emergency_stop
-```
-
-## Development
+## 개발
 
 ```bash
 colcon build --symlink-install
 python3 -m compileall src
 ```
-
-ROS 2 실행 환경과 실제 Jetson 하드웨어가 없으면 런타임 검증은 제한됩니다. 변경 시에는 최소한 해당 launch 파일과 설정 파일이 서로 맞는지 함께 확인하는 것을 권장합니다.
-
-## Safety Notes
-
-- 실제 바닥 주행 전에는 반드시 바퀴를 띄운 상태에서 테스트합니다.
-- 하드웨어 기본 설정은 실차에 맞춰져 있으므로 다른 배선에서는 `vehicle_hw.yaml`부터 조정해야 합니다.
-- 웹 제어와 자율주행은 모두 실제 모터 출력을 만들 수 있으므로 비상 정지 토픽 사용 절차를 먼저 확인하십시오.
 
 ## License
 
