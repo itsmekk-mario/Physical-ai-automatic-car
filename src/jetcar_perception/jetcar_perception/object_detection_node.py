@@ -39,6 +39,7 @@ class ObjectDetectionNode(Node):
 
         self.ready_pub = self.create_publisher(Bool, '/perception/detections/ready', 10)
         self.hazard_pub = self.create_publisher(Bool, '/perception/detections/hazard', 10)
+        self.person_pub = self.create_publisher(Bool, '/perception/detections/person_detected', 10)
         self.closest_pub = self.create_publisher(Float32, '/perception/detections/closest_confidence', 10)
         self.status_pub = self.create_publisher(String, '/perception/detections/status', 10)
         self.create_subscription(Image, self.image_topic, self.image_cb, 10)
@@ -188,6 +189,12 @@ class ObjectDetectionNode(Node):
         hazard.data = bool(self.latest_hazard) and ready.data
         self.hazard_pub.publish(hazard)
 
+        person_detected = Bool()
+        person_detected.data = ready.data and any(
+            detection.get('class_name') == 'person' for detection in self.latest_detections
+        )
+        self.person_pub.publish(person_detected)
+
         confidence = Float32()
         confidence.data = float(self.latest_confidence if ready.data else 0.0)
         self.closest_pub.publish(confidence)
@@ -198,7 +205,7 @@ class ObjectDetectionNode(Node):
             f'engine_path={self.active_model_path or self.engine_path}, '
             f'target_classes={",".join(self.target_classes)}, '
             f'confidence_threshold={self.confidence_threshold:.2f}, '
-            f'detections={self.latest_detection_count}, hazard={hazard.data}, '
+            f'detections={self.latest_detection_count}, hazard={hazard.data}, person_detected={person_detected.data}, '
             f'status={self.last_status}'
         )
         self.status_pub.publish(status)
