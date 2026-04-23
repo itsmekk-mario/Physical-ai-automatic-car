@@ -90,11 +90,15 @@ ros2 launch jetcar_control control_stack.launch.py
 ros2 launch jetcar_perception stereo_camera.launch.py
 ```
 
+실행 후 브라우저: `http://localhost:8081`
+
 스테레오 보정:
 
 ```bash
 ros2 launch jetcar_perception stereo_rectification.launch.py
 ```
+
+실행 후 브라우저: `http://localhost:8081`
 
 스테레오 깊이:
 
@@ -102,11 +106,15 @@ ros2 launch jetcar_perception stereo_rectification.launch.py
 ros2 launch jetcar_perception stereo_depth.launch.py
 ```
 
+실행 후 브라우저: `http://localhost:8081`
+
 차선 인지:
 
 ```bash
 ros2 launch jetcar_perception lane_detection.launch.py
 ```
+
+실행 후 브라우저: `http://localhost:8081`
 
 객체 인지:
 
@@ -114,9 +122,11 @@ ros2 launch jetcar_perception lane_detection.launch.py
 ros2 launch jetcar_perception object_detection.launch.py
 ```
 
+위 다섯 개 perception launch는 모두 차량 하드웨어 제어, control mux, 그리고 `8081` 웹 대시보드를 함께 올립니다. 화면 구성은 `yolo_web.launch.py`와 동일한 조종 페이지입니다.
+
 ### 6. YOLO Web View
 
-기본 설정은 `src/jetcar_perception/config/yolo_web.yaml`을 사용하며, 기본 포트는 현재 `8081`입니다.
+기본 설정은 `src/jetcar_perception/config/yolo_web_stereo.yaml`을 사용하며, 기본 포트는 현재 `8081`입니다.
 
 모델 파일은 아래 둘 중 하나를 준비하면 됩니다.
 

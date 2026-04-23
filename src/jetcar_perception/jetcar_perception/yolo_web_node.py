@@ -696,6 +696,8 @@ class YoloWebNode(Node):
         self.declare_parameter('usb_fourcc', 'default')
         self.declare_parameter('model_path', 'auto')
         self.declare_parameter('image_topic', '')
+        self.declare_parameter('left_image_topic', '')
+        self.declare_parameter('right_image_topic', '')
         self.declare_parameter('target_classes', ['person', 'car', 'stop sign'])
         self.declare_parameter('confidence_threshold', 0.4)
         self.declare_parameter('image_size', 320)
@@ -724,6 +726,8 @@ class YoloWebNode(Node):
         self.usb_fourcc = str(self.get_parameter('usb_fourcc').value).upper().strip()
         self.model_path = str(self.get_parameter('model_path').value)
         self.image_topic = str(self.get_parameter('image_topic').value).strip()
+        self.left_image_topic = str(self.get_parameter('left_image_topic').value).strip()
+        self.right_image_topic = str(self.get_parameter('right_image_topic').value).strip()
         self.target_classes = [str(name) for name in self.get_parameter('target_classes').value]
         self.confidence_threshold = float(self.get_parameter('confidence_threshold').value)
         self.image_size = int(self.get_parameter('image_size').value)
@@ -761,6 +765,10 @@ class YoloWebNode(Node):
         self.create_subscription(Bool, '/perception/depth/ready', self.depth_ready_cb, 10)
         if self.image_topic:
             self.create_subscription(Image, self.image_topic, self.image_topic_cb, 10)
+        if self.left_image_topic:
+            self.create_subscription(Image, self.left_image_topic, self.left_image_topic_cb, 10)
+        if self.right_image_topic:
+            self.create_subscription(Image, self.right_image_topic, self.right_image_topic_cb, 10)
 
         self.frame_lock = threading.Lock()
         self.latest_jpeg = None
@@ -800,6 +808,11 @@ class YoloWebNode(Node):
         self.camera_error_log = ''
         self.topic_frame_lock = threading.Lock()
         self.topic_frame = None
+        self.topic_frame_time = None
+        self.left_topic_frame = None
+        self.left_topic_frame_time = None
+        self.right_topic_frame = None
+        self.right_topic_frame_time = None
 
         self.model = self.load_model()
         self.app = Flask(__name__)
@@ -849,7 +862,33 @@ class YoloWebNode(Node):
         frame = self.image_to_bgr(msg)
         with self.topic_frame_lock:
             self.topic_frame = frame
+            self.topic_frame_time = time.monotonic()
         self.active_camera_source = f'ros:{self.image_topic}'
+
+    def left_image_topic_cb(self, msg: Image):
+        frame = self.image_to_bgr(msg)
+        with self.topic_frame_lock:
+            self.left_topic_frame = frame
+            self.left_topic_frame_time = time.monotonic()
+        self.active_camera_source = f'ros:{self.left_image_topic}+{self.right_image_topic}'
+
+    def right_image_topic_cb(self, msg: Image):
+        frame = self.image_to_bgr(msg)
+        with self.topic_frame_lock:
+            self.right_topic_frame = frame
+            self.right_topic_frame_time = time.monotonic()
+        self.active_camera_source = f'ros:{self.left_image_topic}+{self.right_image_topic}'
+
+    def compose_stereo_frame(self, left_frame, right_frame):
+        if left_frame is None and right_frame is None:
+            return None
+        if left_frame is None:
+            left_frame = np.zeros_like(right_frame)
+        if right_frame is None:
+            right_frame = np.zeros_like(left_frame)
+        if left_frame.shape[:2] != right_frame.shape[:2]:
+            right_frame = cv2.resize(right_frame, (left_frame.shape[1], left_frame.shape[0]), interpolation=cv2.INTER_AREA)
+        return np.hstack((left_frame, right_frame))
 
     def control_state_payload(self):
         return {
@@ -1196,14 +1235,60 @@ class YoloWebNode(Node):
             capture.set(cv2.CAP_PROP_FPS, self.camera_fps)
 
     def capture_loop(self):
+        if self.left_image_topic or self.right_image_topic:
+            last_time = time.monotonic()
+            waiting_logged = False
+            while not self.stop_event.is_set():
+                with self.topic_frame_lock:
+                    left_frame = None if self.left_topic_frame is None else self.left_topic_frame.copy()
+                    right_frame = None if self.right_topic_frame is None else self.right_topic_frame.copy()
+                    left_time = self.left_topic_frame_time
+                    right_time = self.right_topic_frame_time
+                left_age = 999.0 if left_time is None else max(0.0, time.monotonic() - left_time)
+                right_age = 999.0 if right_time is None else max(0.0, time.monotonic() - right_time)
+                frame = self.compose_stereo_frame(
+                    left_frame if left_age <= 2.0 else None,
+                    right_frame if right_age <= 2.0 else None,
+                )
+                if frame is None:
+                    status = f'waiting for stereo image topics: {self.left_image_topic} | {self.right_image_topic}'
+                    self.publish_status_frame(status)
+                    self.update_camera_status(status, log_level='info', force_log=not waiting_logged)
+                    waiting_logged = True
+                    self.stop_event.wait(0.05)
+                    continue
+
+                waiting_logged = False
+                frame = self.prepare_stream_frame(frame)
+                if self.model is not None and left_frame is not None:
+                    detector_input = self.prepare_stream_frame(left_frame)
+                    self.submit_detection_frame(detector_input)
+                    with self.detection_lock:
+                        detections = list(self.latest_detections)
+                    self.draw_detections(frame, detections)
+
+                now = time.monotonic()
+                elapsed = max(now - last_time, 0.001)
+                last_time = now
+                jpeg = self.encode_frame(frame)
+                if jpeg is None:
+                    continue
+                with self.frame_lock:
+                    self.latest_jpeg = jpeg
+                    self.latest_frame_id += 1
+                    self.latest_ready = True
+                    self.latest_fps = 1.0 / elapsed
+            return
+
         if self.image_topic:
             last_time = time.monotonic()
             waiting_logged = False
             while not self.stop_event.is_set():
                 with self.topic_frame_lock:
                     frame = None if self.topic_frame is None else self.topic_frame.copy()
-                    self.topic_frame = None
-                if frame is None:
+                    frame_time = self.topic_frame_time
+                frame_age = 999.0 if frame_time is None else max(0.0, time.monotonic() - frame_time)
+                if frame is None or frame_age > 2.0:
                     status = f'waiting for image topic: {self.image_topic}'
                     self.publish_status_frame(status)
                     self.update_camera_status(status, log_level='info', force_log=not waiting_logged)

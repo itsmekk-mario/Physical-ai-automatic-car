@@ -1,9 +1,18 @@
 stereo_rectification_node:
   ros__parameters:
     calibration_file: config/stereo_calibration.yaml
-    fx_px: 700.0
-    fy_px: 700.0
-    cx_px: 640.0
-    cy_px: 360.0
+    fx_px: 350.0
+    fy_px: 350.0
+    cx_px: 320.0
+    cy_px: 180.0
     baseline_m: 0.06
-    publish_rate_hz: 2.0
+    publish_rate_hz: 10.0
+    image_width: 640
+    image_height: 360
+    left_frame_id: stereo_left_optical_frame
+    right_frame_id: stereo_right_optical_frame
+    left_image_topic: /sensors/stereo/left/image_raw
+    right_image_topic: /sensors/stereo/right/image_raw
+    left_rectified_topic: /sensors/stereo/left/image_rect
+    right_rectified_topic: /sensors/stereo/right/image_rect
+    max_frame_age_sec: 0.5

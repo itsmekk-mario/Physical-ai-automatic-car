@@ -1,0 +1,34 @@
+yolo_web_node:
+  ros__parameters:
+    host: 0.0.0.0
+    port: 8081
+    camera_source: auto
+    camera_backend: auto
+    camera_sensor_id: 0
+    camera_flip_method: 0
+    usb_fourcc: default
+    model_path: auto
+    image_topic: /sensors/stereo/left/image_raw
+    left_image_topic: /sensors/stereo/left/image_raw
+    right_image_topic: /sensors/stereo/right/image_raw
+    target_classes:
+      - person
+      - car
+      - stop sign
+    confidence_threshold: 0.4
+    image_size: 320
+    publish_rate_hz: 10.0
+    jpeg_quality: 70
+    camera_width: 1280
+    camera_height: 720
+    camera_fps: 60
+    stream_width: 640
+    stream_height: 360
+    stream_delay_ms: 5
+    camera_retry_sec: 1.5
+    camera_read_failures_before_reopen: 5
+    detection_rate_hz: 4.0
+    inference_device: cuda:0
+    prefer_half: true
+    throttle_step: 0.1
+    steering_step_cmd: 0.2

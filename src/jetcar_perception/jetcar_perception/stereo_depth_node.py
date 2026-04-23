@@ -16,8 +16,8 @@ class StereoDepthNode(Node):
         self.declare_parameter('disparity_nominal_px', 42.0)
         self.declare_parameter('safe_stop_distance_m', 0.8)
         self.declare_parameter('publish_rate_hz', 10.0)
-        self.declare_parameter('left_image_topic', '/sensors/stereo/left/image_raw')
-        self.declare_parameter('right_image_topic', '/sensors/stereo/right/image_raw')
+        self.declare_parameter('left_image_topic', '/sensors/stereo/left/image_rect')
+        self.declare_parameter('right_image_topic', '/sensors/stereo/right/image_rect')
         self.declare_parameter('max_frame_age_sec', 0.5)
         self.declare_parameter('stereo_num_disparities', 96)
         self.declare_parameter('stereo_block_size', 7)
@@ -91,10 +91,9 @@ class StereoDepthNode(Node):
     def image_to_gray(self, msg: Image):
         if msg.encoding not in ('bgr8', 'rgb8', 'mono8'):
             raise ValueError(f'unsupported image encoding: {msg.encoding}')
-        channels = 1 if msg.encoding == 'mono8' else 3
-        frame = np.frombuffer(msg.data, dtype=np.uint8).reshape((msg.height, msg.width, channels))
         if msg.encoding == 'mono8':
-            return frame
+            return np.frombuffer(msg.data, dtype=np.uint8).reshape((msg.height, msg.width))
+        frame = np.frombuffer(msg.data, dtype=np.uint8).reshape((msg.height, msg.width, 3))
         if msg.encoding == 'rgb8':
             return cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
