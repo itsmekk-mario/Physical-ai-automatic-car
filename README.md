@@ -29,6 +29,7 @@ pip install smbus2 ultralytics
 
 ```bash
 cd /home/kown/jetcar_ws
+source /opt/ros/humble/setup.bash
 colcon build --symlink-install
 source install/setup.bash
 ```
@@ -37,7 +38,14 @@ source install/setup.bash
 
 ```bash
 cd /home/kown/jetcar_ws
+source /opt/ros/humble/setup.bash
 source install/setup.bash
+```
+
+확인:
+
+```bash
+ros2 pkg list | grep jetcar_perception
 ```
 
 ## How To Run
@@ -84,13 +92,26 @@ ros2 launch jetcar_control control_stack.launch.py
 
 ### 5. Perception Pipelines
 
-스테레오 카메라만:
+아래 perception launch는 모두 공통으로 다음을 함께 올립니다.
+
+- `vehicle_hw_node`
+- `drive_mode_manager_node`
+- `control_mux_node`
+- `yolo_web_node`
+
+웹 대시보드:
+
+```text
+http://localhost:8081
+```
+
+웹 화면은 좌우 스테레오 뷰를 나란히 보여주며, YOLO 검출은 왼쪽 영상 기준으로 표시합니다.
+
+스테레오 카메라:
 
 ```bash
 ros2 launch jetcar_perception stereo_camera.launch.py
 ```
-
-실행 후 브라우저: `http://localhost:8081`
 
 스테레오 보정:
 
@@ -98,15 +119,11 @@ ros2 launch jetcar_perception stereo_camera.launch.py
 ros2 launch jetcar_perception stereo_rectification.launch.py
 ```
 
-실행 후 브라우저: `http://localhost:8081`
-
 스테레오 깊이:
 
 ```bash
 ros2 launch jetcar_perception stereo_depth.launch.py
 ```
-
-실행 후 브라우저: `http://localhost:8081`
 
 차선 인지:
 
@@ -114,19 +131,15 @@ ros2 launch jetcar_perception stereo_depth.launch.py
 ros2 launch jetcar_perception lane_detection.launch.py
 ```
 
-실행 후 브라우저: `http://localhost:8081`
-
 객체 인지:
 
 ```bash
 ros2 launch jetcar_perception object_detection.launch.py
 ```
 
-위 다섯 개 perception launch는 모두 차량 하드웨어 제어, control mux, 그리고 `8081` 웹 대시보드를 함께 올립니다. 화면 구성은 `yolo_web.launch.py`와 동일한 조종 페이지입니다.
-
 ### 6. YOLO Web View
 
-기본 설정은 `src/jetcar_perception/config/yolo_web_stereo.yaml`을 사용하며, 기본 포트는 현재 `8081`입니다.
+기본 설정은 `src/jetcar_perception/config/yolo_web_stereo.yaml`을 사용합니다.
 
 모델 파일은 아래 둘 중 하나를 준비하면 됩니다.
 
@@ -140,6 +153,10 @@ ros2 launch jetcar_perception object_detection.launch.py
 ```bash
 ros2 launch jetcar_perception yolo_web.launch.py
 ```
+
+이 launch는 스테레오 카메라, control stack, safety supervisor, 웹 UI를 함께 올립니다.
+
+`AI_INTERVENTION` 모드에서 사람이 감지되면 자동 감속/정지 경로가 작동합니다.
 
 원격 접속 예시:
 
@@ -156,6 +173,8 @@ ssh -L 8081:localhost:8081 kown@JETCAR_IP
 ```bash
 ros2 launch jetcar_decision ai_intervention.launch.py
 ```
+
+별도 실행보다는 보통 `yolo_web.launch.py` 또는 perception launch 안에 포함된 safety supervisor를 그대로 사용하는 편이 간단합니다.
 
 자율주행 드라이버만:
 
@@ -233,9 +252,46 @@ python3 servo_manual_step.py
 - `src/jetcar_base/config/vehicle_hw.yaml`: I2C bus, PCA9685 채널, 서보/모터 제한값
 - `src/jetcar_base/config/manual_web.yaml`: 웹 제어 포트와 입력 step
 - `src/jetcar_control/config/control.yaml`: 기본 드라이브 모드와 throttle 제한
-- `src/jetcar_perception/config/*.yaml`: 카메라, 차선, 객체 인지, YOLO 관련 설정
+- `src/jetcar_perception/config/stereo_camera.yaml`: 스테레오 카메라 입력과 publish 해상도
+- `src/jetcar_perception/config/stereo_rectification.yaml`: rectification 기본 파라미터
+- `src/jetcar_perception/config/stereo_depth.yaml`: depth 추정 파라미터
+- `src/jetcar_perception/config/object_detection.yaml`: YOLO 객체 인지 설정
+- `src/jetcar_perception/config/yolo_web_stereo.yaml`: 8081 스테레오 웹 뷰 설정
 - `src/jetcar_decision/config/*.yaml`: 안전 정지 거리, 자율주행 gain과 throttle
 - `src/jetcar_research/config/research_profiles.yaml`: 연구 프로파일 설정
+
+## Quick Checks
+
+스테레오 카메라 토픽 확인:
+
+```bash
+ros2 topic hz /sensors/stereo/left/image_raw
+ros2 topic hz /sensors/stereo/right/image_raw
+ros2 topic echo /sensors/stereo/status
+```
+
+보정 토픽 확인:
+
+```bash
+ros2 topic hz /sensors/stereo/left/image_rect
+ros2 topic hz /sensors/stereo/right/image_rect
+ros2 topic echo /sensors/stereo/rectified/ready
+```
+
+깊이 토픽 확인:
+
+```bash
+ros2 topic echo /perception/depth/status
+ros2 topic echo /perception/depth/min_distance_m
+```
+
+사람 감지 자동 정지 확인:
+
+```bash
+ros2 topic echo /perception/detections/person_detected
+ros2 topic echo /system/estop_cmd
+ros2 topic echo /vehicle/emergency_stop
+```
 
 ## Development
 
