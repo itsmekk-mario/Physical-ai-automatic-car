@@ -750,6 +750,7 @@ class YoloWebNode(Node):
 
         self.ready_pub = self.create_publisher(Bool, '/perception/detections/ready', 10)
         self.hazard_pub = self.create_publisher(Bool, '/perception/detections/hazard', 10)
+        self.person_pub = self.create_publisher(Bool, '/perception/detections/person_detected', 10)
         self.closest_pub = self.create_publisher(Float32, '/perception/detections/closest_confidence', 10)
         self.status_pub = self.create_publisher(String, '/perception/detections/status', 10)
         self.manual_throttle_pub = self.create_publisher(Float32, '/input/manual/throttle', 10)
@@ -1638,6 +1639,12 @@ class YoloWebNode(Node):
         hazard_msg = Bool()
         hazard_msg.data = hazard
         self.hazard_pub.publish(hazard_msg)
+
+        person_msg = Bool()
+        person_msg.data = bool(
+            ready and any(detection.get('class_name') == 'person' for detection in self.latest_detections)
+        )
+        self.person_pub.publish(person_msg)
 
         confidence_msg = Float32()
         confidence_msg.data = confidence

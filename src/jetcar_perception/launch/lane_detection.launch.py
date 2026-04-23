@@ -9,11 +9,13 @@ def generate_launch_description():
     perception_share = get_package_share_directory('jetcar_perception')
     base_share = get_package_share_directory('jetcar_base')
     control_share = get_package_share_directory('jetcar_control')
+    decision_share = get_package_share_directory('jetcar_decision')
     stereo_camera_config = os.path.join(perception_share, 'config', 'stereo_camera.yaml')
     lane_detection_config = os.path.join(perception_share, 'config', 'lane_detection.yaml')
     yolo_config = os.path.join(perception_share, 'config', 'yolo_web_stereo.yaml')
     vehicle_hw_config = os.path.join(base_share, 'config', 'vehicle_hw.yaml')
     control_config = os.path.join(control_share, 'config', 'control.yaml')
+    safety_config = os.path.join(decision_share, 'config', 'safety_supervisor.yaml')
 
     return LaunchDescription([
         Node(
@@ -36,6 +38,13 @@ def generate_launch_description():
             name='control_mux_node',
             output='screen',
             parameters=[control_config],
+        ),
+        Node(
+            package='jetcar_decision',
+            executable='safety_supervisor_node',
+            name='safety_supervisor_node',
+            output='screen',
+            parameters=[safety_config],
         ),
         Node(
             package='jetcar_perception',
