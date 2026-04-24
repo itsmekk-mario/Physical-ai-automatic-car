@@ -11,7 +11,7 @@ class YoloEngineBuilderNode(Node):
         self.declare_parameter('model_path', '/home/kown/jetcar_ws/models/yolov8n.pt')
         self.declare_parameter('image_size', 320)
         self.declare_parameter('half', True)
-        self.declare_parameter('int8', False)
+        self.declare_parameter('int8', True)
         self.declare_parameter('workspace_gb', 2.0)
         self.declare_parameter('device', '0')
 

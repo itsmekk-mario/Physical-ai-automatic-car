@@ -7,7 +7,7 @@ yolo_web_node:
     camera_sensor_id: 0
     camera_flip_method: 0
     usb_fourcc: default
-    model_path: auto
+    model_path: /home/kown/jetcar_ws/models/yolov8n.engine
     image_topic: ''
     left_image_topic: /sensors/stereo/left/image_rect
     right_image_topic: /sensors/stereo/right/image_rect
@@ -16,7 +16,7 @@ yolo_web_node:
       - car
       - stop sign
     confidence_threshold: 0.4
-    image_size: 640
+    image_size: 320
     publish_rate_hz: 10.0
     jpeg_quality: 70
     camera_width: 1280
@@ -27,7 +27,7 @@ yolo_web_node:
     stream_delay_ms: 5
     camera_retry_sec: 1.5
     camera_read_failures_before_reopen: 5
-    detection_rate_hz: 4.0
+    detection_rate_hz: 10.0
     inference_device: cuda:0
     prefer_half: true
     throttle_step: 0.1

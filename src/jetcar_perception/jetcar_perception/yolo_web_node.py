@@ -1573,6 +1573,7 @@ class YoloWebNode(Node):
                     'confidence': self.latest_confidence,
                     'model_error': self.model_error,
                     'model_path': self.active_model_path or self.model_path,
+                    'model_runtime': self.model_runtime,
                     'model_search_paths': self.model_search_paths,
                     'camera_source': self.active_camera_source or self.camera_source,
                     'status': self.latest_status,
