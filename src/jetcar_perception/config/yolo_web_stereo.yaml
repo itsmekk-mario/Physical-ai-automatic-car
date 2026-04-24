@@ -8,21 +8,21 @@ yolo_web_node:
     camera_flip_method: 0
     usb_fourcc: default
     model_path: auto
-    image_topic: /sensors/stereo/left/image_raw
-    left_image_topic: /sensors/stereo/left/image_raw
-    right_image_topic: /sensors/stereo/right/image_raw
+    image_topic: ''
+    left_image_topic: /sensors/stereo/left/image_rect
+    right_image_topic: /sensors/stereo/right/image_rect
     target_classes:
       - person
       - car
       - stop sign
     confidence_threshold: 0.4
-    image_size: 320
+    image_size: 640
     publish_rate_hz: 10.0
     jpeg_quality: 70
     camera_width: 1280
     camera_height: 720
     camera_fps: 60
-    stream_width: 640
+    stream_width: 960
     stream_height: 360
     stream_delay_ms: 5
     camera_retry_sec: 1.5

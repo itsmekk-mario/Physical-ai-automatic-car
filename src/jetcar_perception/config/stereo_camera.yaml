@@ -14,8 +14,8 @@ stereo_camera_node:
     flip_vertical: true
     capture_width: 1280
     capture_height: 720
-    image_width: 320
-    image_height: 180
+    image_width: 640
+    image_height: 360
     fps: 30.0
     baseline_m: 0.06
     publish_rate_hz: 20.0
@@ -26,4 +26,4 @@ stereo_camera_node:
     right_camera_start_delay_sec: 0.75
     left_sensor_mode: 4
     right_sensor_mode: 4
-    publish_encoding: mono8
+    publish_encoding: bgr8
