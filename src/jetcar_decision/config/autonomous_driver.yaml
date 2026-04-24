@@ -8,3 +8,6 @@ autonomous_driver_node:
     startup_hold_sec: 2.0
     input_timeout_sec: 0.5
     max_throttle_step: 0.01
+    autonomy_level: 2
+    require_lane: false
+    use_detection_hazard: false

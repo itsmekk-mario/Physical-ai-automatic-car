@@ -4,3 +4,17 @@ safety_supervisor_node:
     lane_assist_gain: 0.8
     ai_intervention_person_stop: true
     publish_rate_hz: 10.0
+    autonomy_level: 1
+    avoidance_enabled: true
+    obstacle_reaction_distance_m: 1.4
+    obstacle_stop_distance_m: 0.55
+    moving_obstacle_speed_threshold_mps: 0.15
+    avoidance_gain: 1.1
+    lane_blend_gain: 0.35
+    max_avoidance_steering: 0.85
+    moving_obstacle_throttle: 0.03
+    static_obstacle_throttle: 0.04
+    avoidance_offset_deadband: 0.08
+    depth_speed_alpha: 0.4
+    dynamic_reaction_time_sec: 1.2
+    max_dynamic_reaction_distance_m: 2.2

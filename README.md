@@ -17,8 +17,16 @@ Jetson Orin Nano 기반 ROS 2 워크스페이스입니다. 수동 조종, 스테
 ```bash
 sudo apt update
 sudo apt install -y python3-smbus python3-opencv python3-flask python3-numpy
-pip install smbus2 ultralytics
+python3 -m pip install --user -r requirements-jetson.txt
 ```
+
+주의:
+
+```bash
+python3 -m pip install --user "numpy==1.26.4"
+```
+
+Jetson 기본 `torch`는 현재 `numpy 2.x`와 ABI가 맞지 않아 `yolo_web_node`가 모델 로드 중 실패할 수 있습니다. `ultralytics` 재설치 후에도 `numpy`가 다시 올라가지 않도록 `requirements-jetson.txt` 기준으로 설치하세요.
 
 빌드:
 
@@ -65,6 +73,19 @@ ros2 launch jetcar_base manual_web.launch.py
 
 브라우저: `http://localhost:5000`
 
+노트북/다른 PC에서 접속할 때는 `localhost`를 쓰면 노트북 자기 자신으로 접속합니다. Jetson에서 IP를 확인한 뒤 노트북 브라우저에서 Jetson IP로 접속하세요.
+
+```bash
+hostname -I
+```
+
+예시:
+
+```text
+http://JETSON_IP:5000
+http://JETSON_IP:8081
+```
+
 제어 스택만:
 
 ```bash
@@ -105,6 +126,8 @@ ros2 launch jetcar_perception lane_detection.launch.py
 ros2 launch jetcar_perception object_detection.launch.py
 ```
 
+`object_detection.launch.py`는 현재 스테레오 카메라, rectification, 객체검출, 차선인식, YOLO 웹 뷰를 함께 띄웁니다.
+
 ## YOLO Web View
 
 기본 설정은 `src/jetcar_perception/config/yolo_web_stereo.yaml`입니다. 웹 화면은 좌우 스테레오 영상을 나란히 보여주고, YOLO 박스는 왼쪽 영상 기준으로 표시합니다.
@@ -112,6 +135,7 @@ ros2 launch jetcar_perception object_detection.launch.py
 모델 파일은 둘 중 하나를 준비하면 됩니다.
 
 ```text
+/home/kown/jetcar_ws/models/yolov8n_int8.engine
 /home/kown/jetcar_ws/models/yolov8n.engine
 /home/kown/jetcar_ws/models/yolov8n.pt
 ```
@@ -169,6 +193,37 @@ ros2 topic echo /perception/depth/min_distance_m
 
 ## Decision / Research
 
+## Autonomous Levels
+
+아래 launch는 기본으로 `AUTONOMOUS` 모드에서 시작합니다. 웹 대시보드는 공통으로 `http://JETSON_IP:8081`이며, 대시보드에서 수동 조작을 하면 `AI_INTERVENTION` 모드로 전환되어 사람 조종 위에 depth 안전 개입이 유지됩니다.
+
+Level 2: depth 기반 저속 직진 + 전방 장애물 정지
+
+```bash
+ros2 launch jetcar_perception level2_depth_stop.launch.py
+```
+
+Level 3: depth 기반 정적 장애물 회피. 좌/중/우 depth sector와 closest offset으로 회피 방향을 정합니다.
+
+```bash
+ros2 launch jetcar_perception level3_static_avoid.launch.py
+```
+
+Level 4: depth 변화량으로 접근 속도를 추정해 동적 장애물에 더 일찍 반응합니다.
+
+```bash
+ros2 launch jetcar_perception level4_dynamic_avoid.launch.py
+```
+
+Depth 설정 확인:
+
+```bash
+ros2 topic echo /perception/depth/status
+ros2 topic echo /perception/depth/closest_offset
+ros2 topic echo /system/safety_override_reason
+ros2 topic echo /system/selected_control_source
+```
+
 Safety supervisor만:
 
 ```bash
@@ -186,6 +241,8 @@ ros2 launch jetcar_decision autonomous_driver.launch.py
 ```bash
 ros2 launch jetcar_research full_autonomous.launch.py
 ```
+
+이 런치는 현재 스테레오 카메라, rectification, depth, 객체검출, 차선인식, safety supervisor, autonomous driver, YOLO 웹 뷰를 함께 실행합니다.
 
 연구 비교 launch:
 

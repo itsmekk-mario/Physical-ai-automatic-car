@@ -15,6 +15,9 @@ class AutonomousDriverNode(Node):
         self.declare_parameter('startup_hold_sec', 2.0)
         self.declare_parameter('input_timeout_sec', 0.5)
         self.declare_parameter('max_throttle_step', 0.02)
+        self.declare_parameter('autonomy_level', 2)
+        self.declare_parameter('require_lane', False)
+        self.declare_parameter('use_detection_hazard', False)
 
         self.cruise_throttle = float(self.get_parameter('cruise_throttle').value)
         self.hazard_stop_distance_m = float(self.get_parameter('hazard_stop_distance_m').value)
@@ -23,6 +26,9 @@ class AutonomousDriverNode(Node):
         self.startup_hold_sec = float(self.get_parameter('startup_hold_sec').value)
         self.input_timeout_sec = float(self.get_parameter('input_timeout_sec').value)
         self.max_throttle_step = abs(float(self.get_parameter('max_throttle_step').value))
+        self.autonomy_level = max(2, int(self.get_parameter('autonomy_level').value))
+        self.require_lane = bool(self.get_parameter('require_lane').value)
+        self.use_detection_hazard = bool(self.get_parameter('use_detection_hazard').value)
 
         self.depth_ready = False
         self.lane_ready = False
@@ -51,7 +57,7 @@ class AutonomousDriverNode(Node):
         self.get_logger().info(
             'autonomous_driver_node started | '
             f'cruise_throttle={self.cruise_throttle:.2f}, stop_distance={self.hazard_stop_distance_m:.2f}, '
-            f'enabled={self.enabled}'
+            f'level={self.autonomy_level}, require_lane={self.require_lane}, enabled={self.enabled}'
         )
 
     def depth_ready_cb(self, msg: Bool):
@@ -95,18 +101,22 @@ class AutonomousDriverNode(Node):
 
     def timer_callback(self):
         uptime = (self.get_clock().now() - self.start_time).nanoseconds / 1e9
-        inputs_fresh = (
-            self.seconds_since(self.last_depth_time) <= self.input_timeout_sec
-            and self.seconds_since(self.last_lane_time) <= self.input_timeout_sec
-        )
-        ready = self.enabled and uptime >= self.startup_hold_sec and inputs_fresh and self.depth_ready and self.lane_ready
-        hazard = self.detection_hazard or self.min_distance_m <= self.hazard_stop_distance_m
+        depth_fresh = self.seconds_since(self.last_depth_time) <= self.input_timeout_sec
+        lane_fresh = self.seconds_since(self.last_lane_time) <= self.input_timeout_sec
+        lane_available = lane_fresh and self.lane_ready
+        lane_required = self.require_lane and self.autonomy_level >= 3
+        inputs_fresh = depth_fresh and (lane_available if lane_required else True)
+        ready = self.enabled and uptime >= self.startup_hold_sec and inputs_fresh and self.depth_ready
+        hazard = self.min_distance_m <= self.hazard_stop_distance_m
+        if self.use_detection_hazard:
+            hazard = hazard or self.detection_hazard
 
         throttle_cmd = 0.0
         steering_cmd = 0.0
         if ready and not hazard:
             throttle_cmd = self.ramp_throttle(self.cruise_throttle)
-            steering_cmd = max(-1.0, min(1.0, self.lane_follow_gain * self.lane_suggested_steering))
+            if self.autonomy_level >= 3 and lane_available:
+                steering_cmd = max(-1.0, min(1.0, self.lane_follow_gain * self.lane_suggested_steering))
         else:
             self.current_throttle_cmd = 0.0
 
@@ -120,7 +130,8 @@ class AutonomousDriverNode(Node):
 
         status = String()
         status.data = (
-            f'enabled={self.enabled}, ready={ready}, fresh={inputs_fresh}, hazard={hazard}, '
+            f'level={self.autonomy_level}, enabled={self.enabled}, ready={ready}, fresh={inputs_fresh}, '
+            f'depth_fresh={depth_fresh}, lane_available={lane_available}, hazard={hazard}, '
             f'throttle={throttle_cmd:.2f}, steering={steering_cmd:.2f}, min_distance_m={self.min_distance_m:.2f}'
         )
         self.pub_status.publish(status)
