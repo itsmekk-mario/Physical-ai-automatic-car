@@ -6,3 +6,10 @@ __pycache__/
 .vscode/
 models/*.onnx
 models/*.engine
+datasets/
+lane_left/
+rosbag2_*/
+runs/
+*.cache
+yolo*.pt
+yolov8*.pt

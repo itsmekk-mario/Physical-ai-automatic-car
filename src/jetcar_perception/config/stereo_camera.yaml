@@ -16,14 +16,15 @@ stereo_camera_node:
     capture_height: 720
     image_width: 640
     image_height: 360
-    fps: 30.0
+    fps: 60.0
     baseline_m: 0.06
-    publish_rate_hz: 20.0
+    publish_rate_hz: 60.0
     max_frame_age_sec: 2.5
     camera_read_failures_before_reopen: 5
     capture_warmup_sec: 6.0
     camera_retry_sec: 1.0
-    right_camera_start_delay_sec: 0.75
+    stale_frame_reopen_sec: 3.0
+    right_camera_start_delay_sec: 2.0
     left_sensor_mode: 4
     right_sensor_mode: 4
     publish_encoding: bgr8

@@ -8,10 +8,16 @@ stereo_depth_node:
     publish_rate_hz: 10.0
     left_image_topic: /sensors/stereo/left/image_rect
     right_image_topic: /sensors/stereo/right/image_rect
+    left_camera_info_topic: /sensors/stereo/left/camera_info_rect
+    right_camera_info_topic: /sensors/stereo/right/camera_info_rect
     max_frame_age_sec: 0.5
-    stereo_num_disparities: 96
-    stereo_block_size: 7
-    roi_top_fraction: 0.45
+    stereo_num_disparities: 128
+    stereo_block_size: 5
+    roi_top_fraction: 0.52
     roi_bottom_fraction: 0.95
-    roi_left_fraction: 0.25
-    roi_right_fraction: 0.75
+    roi_left_fraction: 0.2
+    roi_right_fraction: 0.8
+    min_valid_depth_samples: 80
+    depth_percentile: 20.0
+    speckle_window_size: 50
+    speckle_range: 2

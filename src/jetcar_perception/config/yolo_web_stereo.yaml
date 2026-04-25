@@ -7,28 +7,36 @@ yolo_web_node:
     camera_sensor_id: 0
     camera_flip_method: 0
     usb_fourcc: default
-    model_path: /home/kown/jetcar_ws/models/yolov8n.engine
+    model_path: /home/kown/jetcar_ws/models/yolov8n_int8.engine
     image_topic: ''
-    left_image_topic: /sensors/stereo/left/image_rect
-    right_image_topic: /sensors/stereo/right/image_rect
+    left_image_topic: /sensors/stereo/left/image_raw
+    right_image_topic: /sensors/stereo/right/image_raw
+    # all, *, or any means draw and publish every COCO class detected by YOLO.
+    enable_object_detection: true
     target_classes:
-      - person
-      - car
-      - stop sign
-    confidence_threshold: 0.4
+      - all
+    confidence_threshold: 0.25
     image_size: 320
     publish_rate_hz: 10.0
-    jpeg_quality: 70
+    jpeg_quality: 50
     camera_width: 1280
     camera_height: 720
     camera_fps: 60
-    stream_width: 960
-    stream_height: 360
-    stream_delay_ms: 5
+    stream_width: 640
+    stream_height: 180
+    stream_delay_ms: 0
     camera_retry_sec: 1.5
     camera_read_failures_before_reopen: 5
-    detection_rate_hz: 10.0
+    detection_rate_hz: 2.0
     inference_device: cuda:0
     prefer_half: true
     throttle_step: 0.1
     steering_step_cmd: 0.2
+    cruise_default_throttle: 0.18
+    cruise_max_throttle: 0.35
+    manual_override_mode: MANUAL
+    auto_switch_mode_on_manual_input: true
+    draw_lane_overlay: true
+    lane_overlay_roi_top_fraction: 0.55
+    lane_overlay_min_pixels: 80
+    lane_overlay_expected_width_px: 180.0

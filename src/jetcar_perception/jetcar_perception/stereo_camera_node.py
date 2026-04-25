@@ -15,6 +15,9 @@ from gi.repository import Gst
 Gst.init(None)
 
 
+CSI_OPEN_LOCK = threading.Lock()
+
+
 class GStreamerCapture:
     def __init__(self, pipeline: str, sink_name: str):
         self.pipeline = Gst.parse_launch(pipeline)
@@ -92,6 +95,7 @@ class StereoCameraNode(Node):
         self.declare_parameter('camera_read_failures_before_reopen', 5)
         self.declare_parameter('capture_warmup_sec', 6.0)
         self.declare_parameter('camera_retry_sec', 1.0)
+        self.declare_parameter('stale_frame_reopen_sec', 3.0)
         self.declare_parameter('right_camera_start_delay_sec', 0.75)
         self.declare_parameter('left_sensor_mode', 4)
         self.declare_parameter('right_sensor_mode', 4)
@@ -121,6 +125,7 @@ class StereoCameraNode(Node):
         )
         self.capture_warmup_sec = max(1.0, float(self.get_parameter('capture_warmup_sec').value))
         self.camera_retry_sec = max(0.2, float(self.get_parameter('camera_retry_sec').value))
+        self.stale_frame_reopen_sec = max(0.5, float(self.get_parameter('stale_frame_reopen_sec').value))
         self.right_camera_start_delay_sec = max(0.0, float(self.get_parameter('right_camera_start_delay_sec').value))
         self.left_sensor_mode = int(self.get_parameter('left_sensor_mode').value)
         self.right_sensor_mode = int(self.get_parameter('right_sensor_mode').value)
@@ -138,6 +143,10 @@ class StereoCameraNode(Node):
         self.side_state = {
             'left': self.make_side_state(self.left_camera_source),
             'right': self.make_side_state(self.right_camera_source),
+        }
+        self.last_published_frames = {
+            'left': -1,
+            'right': -1,
         }
 
         self.workers = [
@@ -165,7 +174,9 @@ class StereoCameraNode(Node):
             'latest_time': None,
             'frames': 0,
             'read_failures': 0,
+            'open_failures': 0,
             'last_error': 'starting',
+            'last_frame_monotonic': None,
         }
 
     def make_camera_info(self, frame_id: str, stamp) -> CameraInfo:
@@ -197,8 +208,8 @@ class StereoCameraNode(Node):
             f'framerate={int(self.fps)}/1, format=NV12 ! '
             f'nvvidconv flip-method={self.camera_flip_method} ! '
             f'video/x-raw, width={self.image_width}, height={self.image_height}, format=BGRx ! '
-            'queue max-size-buffers=1 leaky=downstream ! videoconvert ! '
-            f'video/x-raw, format=BGR ! appsink name={sink_name} max-buffers=1 drop=true sync=false'
+            f'queue max-size-buffers=1 leaky=downstream ! appsink name={sink_name} '
+            'max-buffers=1 drop=true sync=false'
         )
 
     def open_capture(self, source: str, side: str):
@@ -222,7 +233,10 @@ class StereoCameraNode(Node):
     def try_open_capture(self, side: str):
         source = self.side_state[side]['source']
         capture = None
+        uses_csi = source.lower().startswith('csi:')
         try:
+            if uses_csi:
+                CSI_OPEN_LOCK.acquire()
             capture, active_source = self.open_capture(source, side)
             if not capture.isOpened():
                 if capture is not None:
@@ -246,6 +260,20 @@ class StereoCameraNode(Node):
                 capture.release()
             self.get_logger().error(f'{side} camera open failed: {source}: {exc}')
             return None, source
+        finally:
+            if uses_csi and CSI_OPEN_LOCK.locked():
+                CSI_OPEN_LOCK.release()
+
+    def maybe_log_recovery_hint(self, side: str, active_source: str, open_failures: int):
+        if not active_source.lower().startswith('csi:'):
+            return
+        if open_failures not in (5, 10):
+            return
+        self.get_logger().error(
+            f'{side} CSI camera is still unavailable after {open_failures} open attempts. '
+            'If the camera was unplugged while streaming, restart nvargus-daemon or reboot the Jetson. '
+            'Hot-unplugging CSI cameras can leave Argus in a stale state.'
+        )
 
     def prepare_frame(self, frame):
         if frame.shape[1] != self.image_width or frame.shape[0] != self.image_height:
@@ -268,21 +296,35 @@ class StereoCameraNode(Node):
                 self.side_state[side]['capture'] = capture
                 self.side_state[side]['active_source'] = active_source
                 self.side_state[side]['read_failures'] = 0
-                self.side_state[side]['last_error'] = 'ok' if capture is not None else 'open failed'
+                if capture is not None:
+                    self.side_state[side]['open_failures'] = 0
+                    self.side_state[side]['last_error'] = 'ok'
+                else:
+                    self.side_state[side]['open_failures'] += 1
+                    self.side_state[side]['last_error'] = 'open failed'
+                open_failures = self.side_state[side]['open_failures']
 
             if capture is None:
+                self.maybe_log_recovery_hint(side, active_source, open_failures)
                 self.stop_event.wait(self.camera_retry_sec)
                 continue
 
             while not self.stop_event.is_set():
                 ok, frame = capture.read()
                 if not ok or frame is None:
+                    now_mono = time.monotonic()
                     with self.state_lock:
                         self.side_state[side]['read_failures'] += 1
                         failures = self.side_state[side]['read_failures']
                         self.side_state[side]['last_error'] = 'read failed'
+                        last_frame_mono = self.side_state[side]['last_frame_monotonic']
                     if failures >= self.camera_read_failures_before_reopen:
                         self.get_logger().warning(f'{side} camera read failed repeatedly, reopening capture')
+                        break
+                    if last_frame_mono is not None and now_mono - last_frame_mono > self.stale_frame_reopen_sec:
+                        with self.state_lock:
+                            self.side_state[side]['last_error'] = 'stale frame timeout'
+                        self.get_logger().warning(f'{side} camera frame stalled, reopening capture')
                         break
                     self.stop_event.wait(0.01)
                     continue
@@ -295,10 +337,13 @@ class StereoCameraNode(Node):
                     self.side_state[side]['frames'] += 1
                     self.side_state[side]['read_failures'] = 0
                     self.side_state[side]['last_error'] = 'ok'
+                    self.side_state[side]['last_frame_monotonic'] = time.monotonic()
 
             capture.release()
             with self.state_lock:
                 self.side_state[side]['capture'] = None
+            if active_source.lower().startswith('csi:'):
+                self.stop_event.wait(0.25)
             self.stop_event.wait(self.camera_retry_sec)
 
     def frame_is_fresh(self, stamp):
@@ -343,10 +388,12 @@ class StereoCameraNode(Node):
         self.left_info_pub.publish(self.make_camera_info(self.left_frame_id, stamp))
         self.right_info_pub.publish(self.make_camera_info(self.right_frame_id, stamp))
 
-        if left_ok:
+        if left_ok and left_frames != self.last_published_frames['left']:
             self.left_image_pub.publish(self.bgr_to_image_msg(left_frame, self.left_frame_id, stamp))
-        if right_ok:
+            self.last_published_frames['left'] = left_frames
+        if right_ok and right_frames != self.last_published_frames['right']:
             self.right_image_pub.publish(self.bgr_to_image_msg(right_frame, self.right_frame_id, stamp))
+            self.last_published_frames['right'] = right_frames
 
         ready = Bool()
         ready.data = left_ok and right_ok

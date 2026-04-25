@@ -12,23 +12,22 @@ yolo_web_node:
     # green frames on some devices. Set MJPG/YUYV only when needed explicitly.
     usb_fourcc: default
     model_path: auto
+    # all, *, or any means draw and publish every COCO class detected by YOLO.
     target_classes:
-      - person
-      - car
-      - stop sign
-    confidence_threshold: 0.4
+      - all
+    confidence_threshold: 0.25
     image_size: 320
     publish_rate_hz: 10.0
-    jpeg_quality: 70
+    jpeg_quality: 65
     camera_width: 1280
     camera_height: 720
     camera_fps: 60
     stream_width: 640
     stream_height: 360
-    stream_delay_ms: 5
+    stream_delay_ms: 1
     camera_retry_sec: 1.5
     camera_read_failures_before_reopen: 5
-    detection_rate_hz: 4.0
+    detection_rate_hz: 10.0
     inference_device: cuda:0
     prefer_half: true
     throttle_step: 0.1

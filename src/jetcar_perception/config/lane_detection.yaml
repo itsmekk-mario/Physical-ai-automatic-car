@@ -5,7 +5,7 @@ lane_detection_node:
     heading_error_deg: 0.0
     lane_confidence: 0.9
     assist_gain: 1.4
-    image_topic: /sensors/stereo/left/image_rect
+    image_topic: /sensors/stereo/left/image_raw
     meters_per_pixel: 0.0025
     roi_top_fraction: 0.58
     min_lane_pixels: 150
@@ -13,3 +13,11 @@ lane_detection_node:
     expected_lane_width_px: 280.0
     heading_gain: 0.25
     max_heading_error_deg: 30.0
+    detector_backend: auto
+    model_path: /home/kown/jetcar_ws/runs/segment/jetcar_lane_dual/weights/best.engine
+    confidence_threshold: 0.25
+    image_size: 320
+    inference_device: cuda:0
+    prefer_half: true
+    yolo_class_name: ''
+    yolo_min_mask_pixels: 80

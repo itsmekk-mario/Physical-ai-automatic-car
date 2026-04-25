@@ -6,7 +6,7 @@ stereo_rectification_node:
     cx_px: 320.0
     cy_px: 180.0
     baseline_m: 0.06
-    publish_rate_hz: 10.0
+    publish_rate_hz: 30.0
     image_width: 640
     image_height: 360
     left_frame_id: stereo_left_optical_frame

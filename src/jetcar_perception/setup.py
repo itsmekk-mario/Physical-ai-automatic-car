@@ -13,7 +13,7 @@ setup(
         ('share/' + package_name + '/launch', glob('launch/*.launch.py')),
         ('share/' + package_name + '/config', glob('config/*.yaml')),
     ],
-    install_requires=['setuptools', 'flask'],
+    install_requires=['setuptools', 'flask', 'numpy<2'],
     zip_safe=True,
     maintainer='kown',
     maintainer_email='kown@example.com',

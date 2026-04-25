@@ -105,7 +105,7 @@ class ControlMuxNode(Node):
     def select_source(self):
         if self.estop_requested or self.estop_state:
             return 'ESTOP', 0.0, 0.0
-        if self.safety_override_active:
+        if self.safety_override_active and self.drive_mode in ('AI_INTERVENTION', 'AUTONOMOUS'):
             if self.source_is_fresh(self.ai_last_time):
                 throttle, steering = self.clamp_source(self.ai_throttle, self.ai_steering, self.ai_max_throttle)
                 return 'AI_OVERRIDE', throttle, steering

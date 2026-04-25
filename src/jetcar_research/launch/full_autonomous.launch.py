@@ -11,6 +11,7 @@ def generate_launch_description():
     perception_share = get_package_share_directory('jetcar_perception')
     decision_share = get_package_share_directory('jetcar_decision')
     research_share = get_package_share_directory('jetcar_research')
+    yolo_web_config = os.path.join(perception_share, 'config', 'yolo_web_stereo.yaml')
 
     return LaunchDescription([
         Node(
@@ -45,6 +46,8 @@ def generate_launch_description():
             executable='stereo_camera_node',
             name='stereo_camera_node',
             output='screen',
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[os.path.join(perception_share, 'config', 'stereo_camera.yaml')],
         ),
         Node(
@@ -52,6 +55,8 @@ def generate_launch_description():
             executable='stereo_rectification_node',
             name='stereo_rectification_node',
             output='screen',
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[os.path.join(perception_share, 'config', 'stereo_rectification.yaml')],
         ),
         Node(
@@ -80,7 +85,10 @@ def generate_launch_description():
             executable='safety_supervisor_node',
             name='safety_supervisor_node',
             output='screen',
-            parameters=[os.path.join(decision_share, 'config', 'safety_supervisor.yaml')],
+            parameters=[
+                os.path.join(decision_share, 'config', 'safety_supervisor.yaml'),
+                {'autonomy_level': 4},
+            ],
         ),
         Node(
             package='jetcar_decision',
@@ -91,6 +99,13 @@ def generate_launch_description():
                 os.path.join(decision_share, 'config', 'autonomous_driver.yaml'),
                 {'enabled_on_start': True},
             ],
+        ),
+        Node(
+            package='jetcar_perception',
+            executable='yolo_web_node',
+            name='yolo_web_node',
+            output='screen',
+            parameters=[yolo_web_config],
         ),
         Node(
             package='jetcar_research',

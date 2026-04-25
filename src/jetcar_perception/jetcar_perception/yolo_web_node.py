@@ -430,6 +430,21 @@ HTML_PAGE = """
 
                 <div class="card">
                     <div class="section-title">
+                        <h2>Cruise</h2>
+                        <span id="cruiseValue">OFF</span>
+                    </div>
+                    <input id="cruiseSlider" type="range" min="0" max="35" value="8" step="1">
+                    <div class="btn-row">
+                        <button data-cruise-speed="8">8%</button>
+                        <button data-cruise-speed="12">12%</button>
+                        <button data-cruise-speed="20">20%</button>
+                        <button data-action="cruise-on">CRUISE ON</button>
+                        <button data-action="cruise-off">CRUISE OFF</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title">
                         <h2>Steering</h2>
                         <span id="steeringValue">0.00</span>
                     </div>
@@ -495,6 +510,7 @@ HTML_PAGE = """
         document.getElementById('streamImage').src = '/stream?ts=' + Date.now();
 
         const throttleSlider = document.getElementById('throttleSlider');
+        const cruiseSlider = document.getElementById('cruiseSlider');
         const steeringSlider = document.getElementById('steeringSlider');
 
         async function fetchJson(url, options) {
@@ -518,14 +534,18 @@ HTML_PAGE = """
             document.getElementById('modeValue').textContent = data.drive_mode;
             document.getElementById('throttleValue').textContent = Number(data.throttle).toFixed(2);
             document.getElementById('steeringValue').textContent = Number(data.steering).toFixed(2);
+            document.getElementById('cruiseValue').textContent =
+                data.cruise_enabled ? `ON ${Math.round(Number(data.cruise_throttle) * 100)}%` : 'OFF';
             document.getElementById('selectedSourceBadge').textContent = `selected: ${data.selected_source}`;
             document.getElementById('safetyBadge').textContent = `AI override: ${data.safety_override}`;
             throttleSlider.value = Math.round(Number(data.throttle) * 100);
+            cruiseSlider.value = Math.round(Number(data.cruise_throttle) * 100);
             steeringSlider.value = Math.round(Number(data.steering) * 100);
             document.getElementById('controlText').textContent =
                 `mode=${data.drive_mode}\n` +
                 `selected=${data.selected_source}\n` +
                 `estop=${data.estop}\n` +
+                `cruise=${data.cruise_enabled} @ ${Math.round(Number(data.cruise_throttle) * 100)}%\n` +
                 `safety_override=${data.safety_override}\n` +
                 `reason=${data.safety_reason}\n` +
                 `distance=${Number(data.min_distance_m).toFixed(2)}\n` +
@@ -558,8 +578,16 @@ HTML_PAGE = """
         throttleSlider.addEventListener('change', function() {
             postControl('/api/set_control_state', {throttle: Number(throttleSlider.value) / 100.0});
         });
+        cruiseSlider.addEventListener('change', function() {
+            postControl('/api/set_cruise_state', {cruise_throttle: Number(cruiseSlider.value) / 100.0});
+        });
         steeringSlider.addEventListener('change', function() {
             postControl('/api/set_control_state', {steering: Number(steeringSlider.value) / 100.0});
+        });
+        document.querySelectorAll('[data-cruise-speed]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                postControl('/api/set_cruise_state', {cruise_throttle: Number(button.dataset.cruiseSpeed) / 100.0});
+            });
         });
         document.querySelectorAll('[data-throttle]').forEach(function(button) {
             button.addEventListener('click', function() {
@@ -582,6 +610,8 @@ HTML_PAGE = """
                 if (action === 'stop') postControl('/api/set_control_state', {throttle: 0.0});
                 else if (action === 'center') postControl('/api/set_control_state', {steering: 0.0});
                 else if (action === 'reset-all') postControl('/api/set_control_state', {throttle: 0.0, steering: 0.0});
+                else if (action === 'cruise-on') postControl('/api/set_cruise_state', {cruise_enabled: true});
+                else if (action === 'cruise-off') postControl('/api/set_cruise_state', {cruise_enabled: false});
                 else if (action === 'estop') postControl('/api/control_command', {key: 'e'});
                 else if (action === 'release') postControl('/api/control_command', {key: 'r'});
             });
@@ -698,8 +728,9 @@ class YoloWebNode(Node):
         self.declare_parameter('image_topic', '')
         self.declare_parameter('left_image_topic', '')
         self.declare_parameter('right_image_topic', '')
-        self.declare_parameter('target_classes', ['person', 'car', 'stop sign'])
-        self.declare_parameter('confidence_threshold', 0.4)
+        self.declare_parameter('target_classes', ['all'])
+        self.declare_parameter('enable_object_detection', True)
+        self.declare_parameter('confidence_threshold', 0.25)
         self.declare_parameter('image_size', 320)
         self.declare_parameter('publish_rate_hz', 10.0)
         self.declare_parameter('jpeg_quality', 70)
@@ -716,6 +747,14 @@ class YoloWebNode(Node):
         self.declare_parameter('prefer_half', True)
         self.declare_parameter('throttle_step', 0.1)
         self.declare_parameter('steering_step_cmd', 0.2)
+        self.declare_parameter('cruise_default_throttle', 0.08)
+        self.declare_parameter('cruise_max_throttle', 0.35)
+        self.declare_parameter('manual_override_mode', 'MANUAL')
+        self.declare_parameter('auto_switch_mode_on_manual_input', True)
+        self.declare_parameter('draw_lane_overlay', True)
+        self.declare_parameter('lane_overlay_roi_top_fraction', 0.55)
+        self.declare_parameter('lane_overlay_min_pixels', 80)
+        self.declare_parameter('lane_overlay_expected_width_px', 180.0)
 
         self.host = str(self.get_parameter('host').value)
         self.port = int(self.get_parameter('port').value)
@@ -729,7 +768,12 @@ class YoloWebNode(Node):
         self.left_image_topic = str(self.get_parameter('left_image_topic').value).strip()
         self.right_image_topic = str(self.get_parameter('right_image_topic').value).strip()
         self.target_classes = [str(name) for name in self.get_parameter('target_classes').value]
-        self.target_class_set = {name.strip().lower() for name in self.target_classes if str(name).strip()}
+        self.target_class_set = {
+            name.strip().lower()
+            for name in self.target_classes
+            if str(name).strip() and str(name).strip().lower() not in ('all', '*', 'any')
+        }
+        self.object_detection_enabled = bool(self.get_parameter('enable_object_detection').value)
         self.confidence_threshold = float(self.get_parameter('confidence_threshold').value)
         self.image_size = int(self.get_parameter('image_size').value)
         self.jpeg_quality = int(self.get_parameter('jpeg_quality').value)
@@ -748,6 +792,16 @@ class YoloWebNode(Node):
         self.prefer_half = bool(self.get_parameter('prefer_half').value)
         self.throttle_step = float(self.get_parameter('throttle_step').value)
         self.steering_step_cmd = float(self.get_parameter('steering_step_cmd').value)
+        self.cruise_default_throttle = max(0.0, float(self.get_parameter('cruise_default_throttle').value))
+        self.cruise_max_throttle = max(0.0, float(self.get_parameter('cruise_max_throttle').value))
+        self.manual_override_mode = str(self.get_parameter('manual_override_mode').value).upper().strip()
+        self.auto_switch_mode_on_manual_input = bool(self.get_parameter('auto_switch_mode_on_manual_input').value)
+        self.draw_lane_overlay_enabled = bool(self.get_parameter('draw_lane_overlay').value)
+        self.lane_overlay_roi_top_fraction = float(self.get_parameter('lane_overlay_roi_top_fraction').value)
+        self.lane_overlay_min_pixels = max(1, int(self.get_parameter('lane_overlay_min_pixels').value))
+        self.lane_overlay_expected_width_px = max(
+            20.0, float(self.get_parameter('lane_overlay_expected_width_px').value)
+        )
 
         self.ready_pub = self.create_publisher(Bool, '/perception/detections/ready', 10)
         self.hazard_pub = self.create_publisher(Bool, '/perception/detections/hazard', 10)
@@ -760,6 +814,7 @@ class YoloWebNode(Node):
         self.manual_steering_pub = self.create_publisher(Float32, '/input/manual/steering', 10)
         self.estop_pub = self.create_publisher(Bool, '/system/estop_cmd', 10)
         self.drive_mode_pub = self.create_publisher(String, '/system/drive_mode_cmd', 10)
+        self.autonomy_enable_pub = self.create_publisher(Bool, '/system/autonomy_enable', 10)
         self.create_subscription(Bool, '/vehicle/emergency_stop_state', self.estop_state_cb, 10)
         self.create_subscription(String, '/system/drive_mode', self.drive_mode_cb, 10)
         self.create_subscription(String, '/system/selected_control_source', self.selected_source_cb, 10)
@@ -768,11 +823,11 @@ class YoloWebNode(Node):
         self.create_subscription(Float32, '/perception/depth/min_distance_m', self.min_distance_cb, 10)
         self.create_subscription(Bool, '/perception/depth/ready', self.depth_ready_cb, 10)
         if self.image_topic:
-            self.create_subscription(Image, self.image_topic, self.image_topic_cb, 10)
+            self.create_subscription(Image, self.image_topic, self.image_topic_cb, 1)
         if self.left_image_topic:
-            self.create_subscription(Image, self.left_image_topic, self.left_image_topic_cb, 10)
+            self.create_subscription(Image, self.left_image_topic, self.left_image_topic_cb, 1)
         if self.right_image_topic:
-            self.create_subscription(Image, self.right_image_topic, self.right_image_topic_cb, 10)
+            self.create_subscription(Image, self.right_image_topic, self.right_image_topic_cb, 1)
 
         self.frame_lock = threading.Lock()
         self.latest_jpeg = None
@@ -801,6 +856,8 @@ class YoloWebNode(Node):
         self.control_queue = deque()
         self.current_throttle = 0.0
         self.current_steering = 0.0
+        self.cruise_enabled = False
+        self.cruise_throttle = min(self.cruise_default_throttle, self.cruise_max_throttle)
         self.estop_active = False
         self.control_status = 'ready'
         self.drive_mode = 'MANUAL'
@@ -813,12 +870,19 @@ class YoloWebNode(Node):
         self.topic_frame_lock = threading.Lock()
         self.topic_frame = None
         self.topic_frame_time = None
+        self.topic_frame_id = 0
         self.left_topic_frame = None
         self.left_topic_frame_time = None
+        self.left_topic_frame_id = 0
         self.right_topic_frame = None
         self.right_topic_frame_time = None
+        self.right_topic_frame_id = 0
+        self.last_published_estop = None
 
-        self.model = self.load_model()
+        self.model = self.load_model() if self.object_detection_enabled else None
+        if not self.object_detection_enabled:
+            self.model_runtime = 'disabled'
+            self.latest_status = 'object detection disabled'
         self.app = Flask(__name__)
         self.setup_routes()
 
@@ -867,6 +931,7 @@ class YoloWebNode(Node):
         with self.topic_frame_lock:
             self.topic_frame = frame
             self.topic_frame_time = time.monotonic()
+            self.topic_frame_id += 1
         self.active_camera_source = f'ros:{self.image_topic}'
 
     def left_image_topic_cb(self, msg: Image):
@@ -874,6 +939,7 @@ class YoloWebNode(Node):
         with self.topic_frame_lock:
             self.left_topic_frame = frame
             self.left_topic_frame_time = time.monotonic()
+            self.left_topic_frame_id += 1
         self.active_camera_source = f'ros:{self.left_image_topic}+{self.right_image_topic}'
 
     def right_image_topic_cb(self, msg: Image):
@@ -881,6 +947,7 @@ class YoloWebNode(Node):
         with self.topic_frame_lock:
             self.right_topic_frame = frame
             self.right_topic_frame_time = time.monotonic()
+            self.right_topic_frame_id += 1
         self.active_camera_source = f'ros:{self.left_image_topic}+{self.right_image_topic}'
 
     def compose_stereo_frame(self, left_frame, right_frame):
@@ -894,11 +961,97 @@ class YoloWebNode(Node):
             right_frame = cv2.resize(right_frame, (left_frame.shape[1], left_frame.shape[0]), interpolation=cv2.INTER_AREA)
         return np.hstack((left_frame, right_frame))
 
+    def prepare_stereo_stream_frames(self, left_frame, right_frame):
+        if left_frame is None and right_frame is None:
+            return None, None
+        if left_frame is None:
+            left_frame = np.zeros_like(right_frame)
+        if right_frame is None:
+            right_frame = np.zeros_like(left_frame)
+
+        target_height = self.stream_height if self.stream_height > 0 else max(left_frame.shape[0], right_frame.shape[0])
+        target_width = self.stream_width if self.stream_width > 0 else left_frame.shape[1] + right_frame.shape[1]
+        left_width = max(1, target_width // 2)
+        right_width = max(1, target_width - left_width)
+
+        left_display = cv2.resize(left_frame, (left_width, target_height), interpolation=cv2.INTER_AREA)
+        right_display = cv2.resize(right_frame, (right_width, target_height), interpolation=cv2.INTER_AREA)
+        self.draw_lane_overlay(left_display)
+        return np.hstack((left_display, right_display)), left_display
+
+    def draw_lane_overlay(self, frame):
+        if not self.draw_lane_overlay_enabled or frame is None:
+            return
+
+        height, width = frame.shape[:2]
+        roi_y = int(max(0.0, min(0.95, self.lane_overlay_roi_top_fraction)) * height)
+        roi = frame[roi_y:, :]
+        if roi.size == 0:
+            return
+
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        white = cv2.inRange(hsv, np.array([0, 0, 165]), np.array([180, 85, 255]))
+        yellow = cv2.inRange(hsv, np.array([15, 55, 70]), np.array([42, 255, 255]))
+        mask = cv2.bitwise_or(white, yellow)
+        kernel = np.ones((5, 5), dtype=np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        ys, xs = np.nonzero(mask)
+        if xs.size < self.lane_overlay_min_pixels:
+            return
+
+        center_x = width / 2.0
+        left_fit = self.fit_overlay_line(xs[xs < center_x], ys[xs < center_x])
+        right_fit = self.fit_overlay_line(xs[xs >= center_x], ys[xs >= center_x])
+        fits = [fit for fit in (left_fit, right_fit) if fit is not None]
+        if not fits:
+            return
+
+        blue = (255, 0, 0)
+        for fit in fits:
+            self.draw_overlay_fit(frame, fit, roi_y, roi.shape[0], blue, 4)
+
+        cv2.putText(
+            frame,
+            'LANE',
+            (12, max(24, roi_y + 24)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            blue,
+            2,
+            cv2.LINE_AA,
+        )
+
+    def fit_overlay_line(self, xs, ys):
+        if xs.size < max(12, self.lane_overlay_min_pixels // 3):
+            return None
+        sample = max(1, xs.size // 800)
+        fit = np.polyfit(ys[::sample].astype(float), xs[::sample].astype(float), 1)
+        return float(fit[0]), float(fit[1])
+
+    def draw_overlay_fit(self, frame, fit, roi_y: int, roi_height: int, color, thickness: int):
+        slope, intercept = fit
+        y1 = max(0, roi_height - 1)
+        y0 = max(0, int(roi_height * 0.15))
+        x1 = int(round(slope * y1 + intercept))
+        x0 = int(round(slope * y0 + intercept))
+        width = frame.shape[1]
+        if (x0 < -width and x1 < -width) or (x0 > 2 * width and x1 > 2 * width):
+            return
+        p0 = (max(0, min(width - 1, x0)), roi_y + y0)
+        p1 = (max(0, min(width - 1, x1)), roi_y + y1)
+        cv2.line(frame, p0, p1, color, thickness, cv2.LINE_AA)
+
     def control_state_payload(self):
+        throttle_value = self.cruise_throttle if self.cruise_enabled and not self.estop_active else self.current_throttle
         return {
             'ok': True,
-            'throttle': float(self.current_throttle),
+            'throttle': float(throttle_value),
+            'manual_throttle': float(self.current_throttle),
             'steering': float(self.current_steering),
+            'cruise_enabled': bool(self.cruise_enabled),
+            'cruise_throttle': float(self.cruise_throttle),
             'estop': bool(self.estop_active),
             'drive_mode': self.drive_mode,
             'selected_source': self.selected_source,
@@ -912,9 +1065,12 @@ class YoloWebNode(Node):
     def clamp_control(self, value: float) -> float:
         return max(-1.0, min(1.0, float(value)))
 
+    def clamp_cruise_throttle(self, value: float) -> float:
+        return max(0.0, min(self.cruise_max_throttle, float(value)))
+
     def publish_control(self):
         throttle_msg = Float32()
-        throttle_msg.data = float(self.current_throttle)
+        throttle_msg.data = float(self.cruise_throttle if self.cruise_enabled and not self.estop_active else self.current_throttle)
         self.manual_throttle_pub.publish(throttle_msg)
 
         steering_msg = Float32()
@@ -925,13 +1081,48 @@ class YoloWebNode(Node):
         estop_msg = Bool()
         estop_msg.data = bool(self.estop_active)
         self.estop_pub.publish(estop_msg)
+        self.last_published_estop = estop_msg.data
 
     def publish_drive_mode(self, mode: str):
         msg = String()
         msg.data = str(mode).upper().strip()
+        if msg.data not in ('MANUAL', 'AI_INTERVENTION', 'AUTONOMOUS'):
+            self.control_status = f'ignored invalid drive mode: {msg.data}'
+            return
         self.drive_mode_pub.publish(msg)
+
+        enable = Bool()
+        enable.data = msg.data == 'AUTONOMOUS'
+        self.autonomy_enable_pub.publish(enable)
+
         self.drive_mode = msg.data
-        self.control_status = f'drive_mode={msg.data}'
+        self.control_status = f'drive_mode={msg.data}, autonomy_enable={enable.data}'
+
+    def maybe_switch_to_manual_override_mode(self):
+        if not self.auto_switch_mode_on_manual_input:
+            return
+        if self.manual_override_mode not in ('MANUAL', 'AI_INTERVENTION', 'AUTONOMOUS'):
+            return
+        if self.drive_mode == self.manual_override_mode:
+            return
+        self.publish_drive_mode(self.manual_override_mode)
+
+    def set_cruise_state(self, enabled=None, throttle=None):
+        if throttle is not None:
+            self.cruise_throttle = self.clamp_cruise_throttle(throttle)
+        if enabled is not None:
+            requested = bool(enabled)
+            if requested and self.estop_active:
+                self.cruise_enabled = False
+                self.control_status = 'ignored cruise enable while estop is active'
+                return
+            self.cruise_enabled = requested
+        if self.cruise_enabled:
+            self.maybe_switch_to_manual_override_mode()
+            self.current_throttle = self.cruise_throttle
+            self.control_status = f'cruise enabled at {self.cruise_throttle:.2f}'
+        else:
+            self.control_status = f'cruise disabled at {self.cruise_throttle:.2f}'
 
     def image_to_bgr(self, msg: Image):
         if msg.encoding not in ('bgr8', 'rgb8', 'mono8'):
@@ -965,36 +1156,46 @@ class YoloWebNode(Node):
             if self.estop_active:
                 self.control_status = 'ignored forward command while estop is active'
                 return
+            self.cruise_enabled = False
+            self.maybe_switch_to_manual_override_mode()
             self.current_throttle = self.clamp_control(self.current_throttle + self.throttle_step)
             self.control_status = f'throttle increased to {self.current_throttle:.2f}'
         elif key == 's':
             if self.estop_active:
                 self.control_status = 'ignored reverse command while estop is active'
                 return
+            self.cruise_enabled = False
+            self.maybe_switch_to_manual_override_mode()
             self.current_throttle = self.clamp_control(self.current_throttle - self.throttle_step)
             self.control_status = f'throttle decreased to {self.current_throttle:.2f}'
         elif key == 'x':
+            self.cruise_enabled = False
+            self.maybe_switch_to_manual_override_mode()
             self.current_throttle = 0.0
             self.control_status = 'throttle set to 0.00'
         elif key == 'a':
             if self.estop_active:
                 self.control_status = 'ignored left steering while estop is active'
                 return
+            self.maybe_switch_to_manual_override_mode()
             self.current_steering = self.clamp_control(self.current_steering - self.steering_step_cmd)
             self.control_status = f'steering moved to {self.current_steering:.2f}'
         elif key == 'd':
             if self.estop_active:
                 self.control_status = 'ignored right steering while estop is active'
                 return
+            self.maybe_switch_to_manual_override_mode()
             self.current_steering = self.clamp_control(self.current_steering + self.steering_step_cmd)
             self.control_status = f'steering moved to {self.current_steering:.2f}'
         elif key == 'c':
             if self.estop_active:
                 self.control_status = 'ignored center steering while estop is active'
                 return
+            self.maybe_switch_to_manual_override_mode()
             self.current_steering = 0.0
             self.control_status = 'steering centered'
         elif key == 'e':
+            self.cruise_enabled = False
             self.estop_active = True
             self.current_throttle = 0.0
             self.current_steering = 0.0
@@ -1014,6 +1215,8 @@ class YoloWebNode(Node):
                 self.current_throttle = 0.0
                 self.control_status = 'ignored throttle set while estop is active'
             else:
+                self.cruise_enabled = False
+                self.maybe_switch_to_manual_override_mode()
                 self.current_throttle = self.clamp_control(throttle)
                 self.control_status = f'throttle set to {self.current_throttle:.2f}'
 
@@ -1022,17 +1225,25 @@ class YoloWebNode(Node):
                 self.current_steering = 0.0
                 self.control_status = 'ignored steering set while estop is active'
             else:
+                self.maybe_switch_to_manual_override_mode()
                 self.current_steering = self.clamp_control(steering)
                 self.control_status = f'steering set to {self.current_steering:.2f}'
 
     def load_model(self):
         try:
+            torch_import_error = None
             try:
                 import torch
                 if torch.cuda.is_available():
                     torch.backends.cudnn.benchmark = True
-            except Exception:
-                pass
+            except Exception as exc:
+                torch_import_error = exc
+
+            if torch_import_error is not None:
+                raise RuntimeError(
+                    'torch import failed: '
+                    f'{self.format_model_error(torch_import_error, "")}'
+                )
 
             from ultralytics import YOLO
 
@@ -1076,12 +1287,13 @@ class YoloWebNode(Node):
 
         self.model_search_paths = []
         for root in self.model_search_roots():
-            for filename in ('yolov8n.engine', 'yolov8n.pt'):
+            for filename in ('yolov8n_int8.engine', 'yolov8n.engine', 'yolov8n_int8.pt', 'yolov8n.pt'):
                 for candidate in (root / 'models' / filename, root / filename):
                     self.model_search_paths.append(str(candidate))
                     if candidate.exists():
                         return str(candidate)
 
+        self.model_search_paths.append('yolov8n_int8.pt (ultralytics default/cache/download)')
         self.model_search_paths.append('yolov8n.pt (ultralytics default/cache/download)')
         return 'yolov8n.pt'
 
@@ -1241,18 +1453,31 @@ class YoloWebNode(Node):
     def capture_loop(self):
         if self.left_image_topic or self.right_image_topic:
             last_time = time.monotonic()
+            last_left_id = -1
+            last_right_id = -1
             waiting_logged = False
             while not self.stop_event.is_set():
                 with self.topic_frame_lock:
-                    left_frame = None if self.left_topic_frame is None else self.left_topic_frame.copy()
-                    right_frame = None if self.right_topic_frame is None else self.right_topic_frame.copy()
+                    left_frame = self.left_topic_frame
+                    right_frame = self.right_topic_frame
                     left_time = self.left_topic_frame_time
                     right_time = self.right_topic_frame_time
+                    left_id = self.left_topic_frame_id
+                    right_id = self.right_topic_frame_id
                 left_age = 999.0 if left_time is None else max(0.0, time.monotonic() - left_time)
                 right_age = 999.0 if right_time is None else max(0.0, time.monotonic() - right_time)
-                frame = self.compose_stereo_frame(
-                    left_frame if left_age <= 2.0 else None,
-                    right_frame if right_age <= 2.0 else None,
+                left_fresh = left_frame if left_age <= 2.0 else None
+                right_fresh = right_frame if right_age <= 2.0 else None
+                current_left_id = left_id if left_fresh is not None else -1
+                current_right_id = right_id if right_fresh is not None else -1
+                if current_left_id == last_left_id and current_right_id == last_right_id:
+                    self.stop_event.wait(0.002)
+                    continue
+                last_left_id = current_left_id
+                last_right_id = current_right_id
+                frame, detector_input = self.prepare_stereo_stream_frames(
+                    left_fresh,
+                    right_fresh,
                 )
                 if frame is None:
                     status = f'waiting for stereo image topics: {self.left_image_topic} | {self.right_image_topic}'
@@ -1263,9 +1488,7 @@ class YoloWebNode(Node):
                     continue
 
                 waiting_logged = False
-                frame = self.prepare_stream_frame(frame)
-                if self.model is not None and left_frame is not None:
-                    detector_input = self.prepare_stream_frame(left_frame)
+                if self.object_detection_enabled and self.model is not None and detector_input is not None and left_age <= 2.0:
                     self.submit_detection_frame(detector_input)
                     with self.detection_lock:
                         detections = list(self.latest_detections)
@@ -1286,11 +1509,13 @@ class YoloWebNode(Node):
 
         if self.image_topic:
             last_time = time.monotonic()
+            last_frame_id = -1
             waiting_logged = False
             while not self.stop_event.is_set():
                 with self.topic_frame_lock:
-                    frame = None if self.topic_frame is None else self.topic_frame.copy()
+                    frame = self.topic_frame
                     frame_time = self.topic_frame_time
+                    frame_id = self.topic_frame_id
                 frame_age = 999.0 if frame_time is None else max(0.0, time.monotonic() - frame_time)
                 if frame is None or frame_age > 2.0:
                     status = f'waiting for image topic: {self.image_topic}'
@@ -1299,10 +1524,14 @@ class YoloWebNode(Node):
                     waiting_logged = True
                     self.stop_event.wait(0.05)
                     continue
+                if frame_id == last_frame_id:
+                    self.stop_event.wait(0.002)
+                    continue
+                last_frame_id = frame_id
 
                 waiting_logged = False
                 frame = self.prepare_stream_frame(frame)
-                if self.model is not None:
+                if self.object_detection_enabled and self.model is not None:
                     self.submit_detection_frame(frame)
                     with self.detection_lock:
                         detections = list(self.latest_detections)
@@ -1346,12 +1575,12 @@ class YoloWebNode(Node):
 
                 read_failures = 0
                 frame = self.prepare_stream_frame(frame)
-                if self.model is not None:
+                if self.object_detection_enabled and self.model is not None:
                     self.submit_detection_frame(frame)
                     with self.detection_lock:
                         detections = list(self.latest_detections)
                     self.draw_detections(frame, detections)
-                else:
+                elif self.object_detection_enabled:
                     cv2.putText(
                         frame,
                         'YOLO model unavailable',
@@ -1411,17 +1640,8 @@ class YoloWebNode(Node):
         if now < self.next_detection_time:
             return
         self.next_detection_time = now + min_interval
-        if frame.shape[1] > 640:
-            scale = 640.0 / float(frame.shape[1])
-            resized = cv2.resize(
-                frame,
-                (640, max(1, int(round(frame.shape[0] * scale)))),
-                interpolation=cv2.INTER_AREA,
-            )
-        else:
-            resized = frame
         with self.detection_lock:
-            self.detector_frame = resized.copy()
+            self.detector_frame = frame.copy()
         self.detector_event.set()
 
     def detection_loop(self):
@@ -1565,6 +1785,7 @@ class YoloWebNode(Node):
             with self.frame_lock:
                 return jsonify({
                     'ready': self.latest_ready,
+                    'object_detection_enabled': self.object_detection_enabled,
                     'model_loaded': self.model_loaded,
                     'fps': self.latest_fps,
                     'detection_fps': self.latest_detection_fps,
@@ -1607,6 +1828,15 @@ class YoloWebNode(Node):
                 self.publish_drive_mode(mode)
             return jsonify(self.control_state_payload())
 
+        @self.app.route('/api/set_cruise_state', methods=['POST'])
+        def api_set_cruise_state():
+            data = request.get_json(silent=True) or {}
+            enabled = data.get('cruise_enabled')
+            throttle = data.get('cruise_throttle')
+            with self.control_lock:
+                self.set_cruise_state(enabled=enabled, throttle=throttle)
+            return jsonify(self.control_state_payload())
+
         @self.app.route('/stream', methods=['GET'])
         def stream():
             response = Response(self.stream_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -1637,7 +1867,8 @@ class YoloWebNode(Node):
             while self.control_queue:
                 self.handle_control_key(self.control_queue.popleft())
             self.publish_control()
-            self.publish_estop()
+            if self.last_published_estop != self.estop_active:
+                self.publish_estop()
 
         with self.frame_lock:
             ready = self.latest_ready

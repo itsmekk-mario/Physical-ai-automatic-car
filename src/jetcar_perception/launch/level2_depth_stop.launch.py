@@ -11,12 +11,18 @@ def generate_launch_description():
     control_share = get_package_share_directory('jetcar_control')
     decision_share = get_package_share_directory('jetcar_decision')
     yolo_web_config = os.path.join(perception_share, 'config', 'yolo_web_stereo.yaml')
+    lane_detection_config = os.path.join(perception_share, 'config', 'lane_detection.yaml')
     dashboard_params = {
         'host': '0.0.0.0',
         'port': 8081,
         'left_image_topic': '/sensors/stereo/left/image_raw',
         'right_image_topic': '/sensors/stereo/right/image_raw',
         'manual_override_mode': 'AI_INTERVENTION',
+        'enable_object_detection': False,
+        'stream_width': 480,
+        'stream_height': 135,
+        'jpeg_quality': 35,
+        'stream_delay_ms': 0,
     }
 
     return LaunchDescription([
@@ -55,7 +61,13 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 os.path.join(decision_share, 'config', 'autonomous_driver.yaml'),
-                {'autonomy_level': 2, 'enabled_on_start': True, 'require_lane': False, 'cruise_throttle': 0.06},
+                {
+                    'autonomy_level': 2,
+                    'enabled_on_start': True,
+                    'require_lane': False,
+                    'lane_follow_min_level': 2,
+                    'cruise_throttle': 0.06,
+                },
             ],
         ),
         Node(
@@ -80,6 +92,13 @@ def generate_launch_description():
             name='stereo_depth_node',
             output='screen',
             parameters=[os.path.join(perception_share, 'config', 'stereo_depth.yaml')],
+        ),
+        Node(
+            package='jetcar_perception',
+            executable='lane_detection_node',
+            name='lane_detection_node',
+            output='screen',
+            parameters=[lane_detection_config],
         ),
         Node(
             package='jetcar_perception',

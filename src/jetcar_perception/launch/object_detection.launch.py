@@ -11,7 +11,9 @@ def generate_launch_description():
     control_share = get_package_share_directory('jetcar_control')
     decision_share = get_package_share_directory('jetcar_decision')
     stereo_camera_config = os.path.join(perception_share, 'config', 'stereo_camera.yaml')
+    rectification_config = os.path.join(perception_share, 'config', 'stereo_rectification.yaml')
     object_detection_config = os.path.join(perception_share, 'config', 'object_detection.yaml')
+    lane_detection_config = os.path.join(perception_share, 'config', 'lane_detection.yaml')
     yolo_config = os.path.join(perception_share, 'config', 'yolo_web_stereo.yaml')
     vehicle_hw_config = os.path.join(base_share, 'config', 'vehicle_hw.yaml')
     control_config = os.path.join(control_share, 'config', 'control.yaml')
@@ -55,10 +57,24 @@ def generate_launch_description():
         ),
         Node(
             package='jetcar_perception',
+            executable='stereo_rectification_node',
+            name='stereo_rectification_node',
+            output='screen',
+            parameters=[rectification_config],
+        ),
+        Node(
+            package='jetcar_perception',
             executable='object_detection_node',
             name='object_detection_node',
             output='screen',
             parameters=[object_detection_config],
+        ),
+        Node(
+            package='jetcar_perception',
+            executable='lane_detection_node',
+            name='lane_detection_node',
+            output='screen',
+            parameters=[lane_detection_config],
         ),
         Node(
             package='jetcar_perception',

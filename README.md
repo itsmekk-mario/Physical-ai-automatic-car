@@ -197,7 +197,7 @@ ros2 topic echo /perception/depth/min_distance_m
 
 아래 launch는 기본으로 `AUTONOMOUS` 모드에서 시작합니다. 웹 대시보드는 공통으로 `http://JETSON_IP:8081`이며, 대시보드에서 수동 조작을 하면 `AI_INTERVENTION` 모드로 전환되어 사람 조종 위에 depth 안전 개입이 유지됩니다.
 
-Level 2: depth 기반 저속 직진 + 전방 장애물 정지
+Level 2: 차선 인식 기반 저속 차선 추종 + depth 기반 전방 장애물 정지
 
 ```bash
 ros2 launch jetcar_perception level2_depth_stop.launch.py
@@ -219,6 +219,7 @@ Depth 설정 확인:
 
 ```bash
 ros2 topic echo /perception/depth/status
+ros2 topic echo /perception/lane/status
 ros2 topic echo /perception/depth/closest_offset
 ros2 topic echo /system/safety_override_reason
 ros2 topic echo /system/selected_control_source

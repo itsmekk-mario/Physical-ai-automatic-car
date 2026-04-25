@@ -17,6 +17,7 @@ class AutonomousDriverNode(Node):
         self.declare_parameter('max_throttle_step', 0.02)
         self.declare_parameter('autonomy_level', 2)
         self.declare_parameter('require_lane', False)
+        self.declare_parameter('lane_follow_min_level', 2)
         self.declare_parameter('use_detection_hazard', False)
 
         self.cruise_throttle = float(self.get_parameter('cruise_throttle').value)
@@ -28,6 +29,7 @@ class AutonomousDriverNode(Node):
         self.max_throttle_step = abs(float(self.get_parameter('max_throttle_step').value))
         self.autonomy_level = max(2, int(self.get_parameter('autonomy_level').value))
         self.require_lane = bool(self.get_parameter('require_lane').value)
+        self.lane_follow_min_level = max(2, int(self.get_parameter('lane_follow_min_level').value))
         self.use_detection_hazard = bool(self.get_parameter('use_detection_hazard').value)
 
         self.depth_ready = False
@@ -104,7 +106,8 @@ class AutonomousDriverNode(Node):
         depth_fresh = self.seconds_since(self.last_depth_time) <= self.input_timeout_sec
         lane_fresh = self.seconds_since(self.last_lane_time) <= self.input_timeout_sec
         lane_available = lane_fresh and self.lane_ready
-        lane_required = self.require_lane and self.autonomy_level >= 3
+        lane_follow_enabled = self.autonomy_level >= self.lane_follow_min_level
+        lane_required = self.require_lane and lane_follow_enabled
         inputs_fresh = depth_fresh and (lane_available if lane_required else True)
         ready = self.enabled and uptime >= self.startup_hold_sec and inputs_fresh and self.depth_ready
         hazard = self.min_distance_m <= self.hazard_stop_distance_m
@@ -115,7 +118,7 @@ class AutonomousDriverNode(Node):
         steering_cmd = 0.0
         if ready and not hazard:
             throttle_cmd = self.ramp_throttle(self.cruise_throttle)
-            if self.autonomy_level >= 3 and lane_available:
+            if lane_follow_enabled and lane_available:
                 steering_cmd = max(-1.0, min(1.0, self.lane_follow_gain * self.lane_suggested_steering))
         else:
             self.current_throttle_cmd = 0.0
@@ -131,7 +134,8 @@ class AutonomousDriverNode(Node):
         status = String()
         status.data = (
             f'level={self.autonomy_level}, enabled={self.enabled}, ready={ready}, fresh={inputs_fresh}, '
-            f'depth_fresh={depth_fresh}, lane_available={lane_available}, hazard={hazard}, '
+            f'depth_fresh={depth_fresh}, lane_follow={lane_follow_enabled}, '
+            f'lane_required={lane_required}, lane_available={lane_available}, hazard={hazard}, '
             f'throttle={throttle_cmd:.2f}, steering={steering_cmd:.2f}, min_distance_m={self.min_distance_m:.2f}'
         )
         self.pub_status.publish(status)

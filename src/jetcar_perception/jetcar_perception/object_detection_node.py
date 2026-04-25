@@ -13,17 +13,28 @@ class ObjectDetectionNode(Node):
     def __init__(self):
         super().__init__('object_detection_node')
 
-        self.declare_parameter('engine_path', 'models/yolov8n.engine')
-        self.declare_parameter('image_topic', '/sensors/stereo/left/image_raw')
-        self.declare_parameter('target_classes', ['person', 'car', 'stop sign'])
-        self.declare_parameter('confidence_threshold', 0.4)
+        self.declare_parameter('engine_path', 'models/yolov8n_int8.engine')
+        self.declare_parameter('image_topic', '/sensors/stereo/left/image_rect')
+        self.declare_parameter('target_classes', ['all'])
+        self.declare_parameter('confidence_threshold', 0.25)
+        self.declare_parameter('image_size', 320)
+        self.declare_parameter('inference_device', 'cuda:0')
+        self.declare_parameter('prefer_half', False)
         self.declare_parameter('max_frame_age_sec', 0.5)
         self.declare_parameter('publish_rate_hz', 10.0)
 
         self.engine_path = str(self.get_parameter('engine_path').value)
         self.image_topic = str(self.get_parameter('image_topic').value)
         self.target_classes = list(self.get_parameter('target_classes').value)
+        self.target_class_set = {
+            str(name).strip().lower()
+            for name in self.target_classes
+            if str(name).strip() and str(name).strip().lower() not in ('all', '*', 'any')
+        }
         self.confidence_threshold = float(self.get_parameter('confidence_threshold').value)
+        self.image_size = int(self.get_parameter('image_size').value)
+        self.inference_device = str(self.get_parameter('inference_device').value).strip()
+        self.prefer_half = bool(self.get_parameter('prefer_half').value)
         self.max_frame_age_sec = float(self.get_parameter('max_frame_age_sec').value)
 
         self.model_search_paths = []
@@ -41,8 +52,10 @@ class ObjectDetectionNode(Node):
         self.hazard_pub = self.create_publisher(Bool, '/perception/detections/hazard', 10)
         self.person_pub = self.create_publisher(Bool, '/perception/detections/person_detected', 10)
         self.closest_pub = self.create_publisher(Float32, '/perception/detections/closest_confidence', 10)
+        self.offset_pub = self.create_publisher(Float32, '/perception/detections/closest_offset', 10)
+        self.area_pub = self.create_publisher(Float32, '/perception/detections/closest_area_ratio', 10)
         self.status_pub = self.create_publisher(String, '/perception/detections/status', 10)
-        self.create_subscription(Image, self.image_topic, self.image_cb, 10)
+        self.create_subscription(Image, self.image_topic, self.image_cb, 1)
 
         self.model = self.load_model()
 
@@ -88,12 +101,13 @@ class ObjectDetectionNode(Node):
 
         self.model_search_paths = []
         for root in self.model_search_roots():
-            for filename in ('yolov8n.engine', 'yolov8n.pt'):
+            for filename in ('yolov8n_int8.engine', 'yolov8n.engine', 'yolov8n_int8.pt', 'yolov8n.pt'):
                 for candidate in (root / 'models' / filename, root / filename):
                     self.model_search_paths.append(str(candidate))
                     if candidate.exists():
                         return str(candidate)
 
+        self.model_search_paths.append('yolov8n_int8.pt (ultralytics default/cache/download)')
         self.model_search_paths.append('yolov8n.pt (ultralytics default/cache/download)')
         return 'yolov8n.pt'
 
@@ -133,9 +147,13 @@ class ObjectDetectionNode(Node):
         return frame
 
     def run_detection(self, frame):
+        frame_height, frame_width = frame.shape[:2]
         results = self.model.predict(
             source=frame,
             conf=self.confidence_threshold,
+            imgsz=self.image_size,
+            device=self.inference_device or None,
+            half=bool(self.prefer_half and str(self.active_model_path).lower().endswith('.pt')),
             verbose=False,
         )
         detections = []
@@ -148,13 +166,28 @@ class ObjectDetectionNode(Node):
             class_id = int(box.cls[0])
             class_name = str(names.get(class_id, class_id))
             confidence = float(box.conf[0])
-            if self.target_classes and class_name not in self.target_classes:
+            if self.target_class_set and class_name.strip().lower() not in self.target_class_set:
                 continue
+            x1, y1, x2, y2 = [int(value) for value in box.xyxy[0].tolist()]
+            box_width = max(1, x2 - x1)
+            box_height = max(1, y2 - y1)
+            center_x = 0.5 * (x1 + x2)
             detections.append({
                 'class_name': class_name,
                 'confidence': confidence,
+                'box': (x1, y1, x2, y2),
+                'center_offset': float((center_x - (frame_width / 2.0)) / max(frame_width / 2.0, 1.0)),
+                'area_ratio': float((box_width * box_height) / max(frame_width * frame_height, 1)),
             })
         return detections
+
+    def select_primary_detection(self):
+        if not self.latest_detections:
+            return None
+        return max(
+            self.latest_detections,
+            key=lambda detection: detection.get('area_ratio', 0.0) * max(detection.get('confidence', 0.0), 0.01),
+        )
 
     def image_cb(self, msg: Image):
         self.last_image_time = self.get_clock().now()
@@ -199,6 +232,16 @@ class ObjectDetectionNode(Node):
         confidence.data = float(self.latest_confidence if ready.data else 0.0)
         self.closest_pub.publish(confidence)
 
+        primary_detection = self.select_primary_detection()
+
+        offset = Float32()
+        offset.data = float(primary_detection.get('center_offset', 0.0)) if ready.data and primary_detection else 0.0
+        self.offset_pub.publish(offset)
+
+        area = Float32()
+        area.data = float(primary_detection.get('area_ratio', 0.0)) if ready.data and primary_detection else 0.0
+        self.area_pub.publish(area)
+
         status = String()
         status.data = (
             f'ready={ready.data}, image_age_sec={self.seconds_since_image():.2f}, '
@@ -206,6 +249,7 @@ class ObjectDetectionNode(Node):
             f'target_classes={",".join(self.target_classes)}, '
             f'confidence_threshold={self.confidence_threshold:.2f}, '
             f'detections={self.latest_detection_count}, hazard={hazard.data}, person_detected={person_detected.data}, '
+            f'closest_offset={offset.data:.2f}, closest_area_ratio={area.data:.4f}, '
             f'status={self.last_status}'
         )
         self.status_pub.publish(status)

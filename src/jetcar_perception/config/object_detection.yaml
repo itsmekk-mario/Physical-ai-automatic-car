@@ -1,11 +1,13 @@
 object_detection_node:
   ros__parameters:
-    engine_path: auto
-    image_topic: /sensors/stereo/left/image_raw
+    engine_path: /home/kown/jetcar_ws/models/yolov8n_int8.engine
+    image_topic: /sensors/stereo/left/image_rect
+    # all, *, or any means publish every COCO class detected by YOLO.
     target_classes:
-      - person
-      - car
-      - stop sign
-    confidence_threshold: 0.4
+      - all
+    confidence_threshold: 0.25
+    image_size: 320
+    inference_device: cuda:0
+    prefer_half: false
     max_frame_age_sec: 0.5
     publish_rate_hz: 10.0

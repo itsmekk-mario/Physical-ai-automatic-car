@@ -5,7 +5,7 @@ from flask import Flask, jsonify, render_template_string, request
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, Bool
+from std_msgs.msg import Float32, Bool, String
 
 
 HTML_PAGE = """
@@ -89,7 +89,7 @@ HTML_PAGE = """
         }
         .meter-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 12px;
             margin-bottom: 16px;
         }
@@ -151,6 +151,11 @@ HTML_PAGE = """
             grid-template-columns: repeat(5, 1fr);
             gap: 10px;
             margin-top: 12px;
+        }
+        .mode-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
         }
         .drive-pad {
             display: grid;
@@ -229,7 +234,8 @@ HTML_PAGE = """
                 grid-template-columns: 1fr;
             }
             .meter-grid,
-            .preset-row {
+            .preset-row,
+            .mode-row {
                 grid-template-columns: repeat(2, 1fr);
             }
         }
@@ -242,7 +248,8 @@ HTML_PAGE = """
                 align-items: flex-start;
             }
             .meter-grid,
-            .preset-row {
+            .preset-row,
+            .mode-row {
                 grid-template-columns: 1fr;
             }
         }
@@ -274,9 +281,25 @@ HTML_PAGE = """
                             <label>E-Stop</label>
                             <strong id="estopValue">OFF</strong>
                         </div>
+                        <div class="stat">
+                            <label>Mode</label>
+                            <strong id="driveModeValue">MANUAL</strong>
+                        </div>
                     </div>
 
                     <div class="controls">
+                        <div class="control-card">
+                            <div class="control-head">
+                                <h2>Drive Mode</h2>
+                                <span id="driveModeHint">MANUAL</span>
+                            </div>
+                            <div class="mode-row">
+                                <button class="subtle" data-mode="MANUAL">MANUAL</button>
+                                <button class="subtle" data-mode="AI_INTERVENTION">AI INTERVENTION</button>
+                                <button class="subtle" data-mode="AUTONOMOUS">AUTONOMOUS</button>
+                            </div>
+                        </div>
+
                         <div class="control-card">
                             <div class="control-head">
                                 <h2>Throttle Slider</h2>
@@ -376,6 +399,8 @@ R release</pre>
         const throttleValue = document.getElementById('throttleValue');
         const steeringValue = document.getElementById('steeringValue');
         const estopValue = document.getElementById('estopValue');
+        const driveModeValue = document.getElementById('driveModeValue');
+        const driveModeHint = document.getElementById('driveModeHint');
         const statusText = document.getElementById('statusText');
         const throttlePercent = document.getElementById('throttlePercent');
         const steeringPercent = document.getElementById('steeringPercent');
@@ -401,11 +426,16 @@ R release</pre>
             throttleValue.textContent = Number(state.throttle).toFixed(2);
             steeringValue.textContent = Number(state.steering).toFixed(2);
             estopValue.textContent = state.estop ? 'ON' : 'OFF';
+            driveModeValue.textContent = state.drive_mode;
+            driveModeHint.textContent = state.drive_mode;
             throttleSlider.value = Math.round(Number(state.throttle) * 100);
             steeringSlider.value = Math.round(Number(state.steering) * 100);
             throttlePercent.textContent = `${Math.round(Number(state.throttle) * 100)}%`;
             steeringPercent.textContent = `${Math.round(Number(state.steering) * 100)}%`;
             statusText.textContent = state.status;
+            document.querySelectorAll('[data-mode]').forEach(function(button) {
+                button.classList.toggle('active', button.dataset.mode === state.drive_mode);
+            });
         }
 
         async function refreshState() {
@@ -427,6 +457,11 @@ R release</pre>
 
         async function setManualState(patch) {
             const state = await postJson('/api/set_state', patch);
+            updateUi(state);
+        }
+
+        async function setDriveMode(mode) {
+            const state = await postJson('/api/set_drive_mode', {mode});
             updateUi(state);
         }
 
@@ -455,6 +490,12 @@ R release</pre>
         document.querySelectorAll('[data-steering]').forEach(function(button) {
             button.addEventListener('click', function() {
                 setManualState({steering: Number(button.dataset.steering) / 100.0});
+            });
+        });
+
+        document.querySelectorAll('[data-mode]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                setDriveMode(button.dataset.mode);
             });
         });
 
@@ -554,17 +595,23 @@ class WebControlNode(Node):
         self.declare_parameter('port', 5000)
         self.declare_parameter('throttle_step', 0.1)
         self.declare_parameter('steering_step_cmd', 0.2)
+        self.declare_parameter('manual_override_mode', 'MANUAL')
+        self.declare_parameter('auto_switch_mode_on_manual_input', True)
         self.declare_parameter('publish_rate_hz', 20.0)
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)
         self.throttle_step = float(self.get_parameter('throttle_step').value)
         self.steering_step_cmd = float(self.get_parameter('steering_step_cmd').value)
+        self.manual_override_mode = str(self.get_parameter('manual_override_mode').value).upper().strip()
+        self.auto_switch_mode_on_manual_input = bool(self.get_parameter('auto_switch_mode_on_manual_input').value)
         self.publish_rate_hz = float(self.get_parameter('publish_rate_hz').value)
 
         self.current_throttle = 0.0
         self.current_steering = 0.0
         self.estop = False
+        self.drive_mode = self.manual_override_mode if self.manual_override_mode in ('MANUAL', 'AI_INTERVENTION', 'AUTONOMOUS') else 'MANUAL'
+        self.last_published_estop = None
         self.command_queue = deque()
         self.command_lock = threading.Lock()
         self.last_status = 'ready'
@@ -572,8 +619,13 @@ class WebControlNode(Node):
         self.pub_throttle = self.create_publisher(Float32, '/input/manual/throttle', 10)
         self.pub_steering = self.create_publisher(Float32, '/input/manual/steering', 10)
         self.pub_estop = self.create_publisher(Bool, '/system/estop_cmd', 10)
+        self.pub_drive_mode = self.create_publisher(String, '/system/drive_mode_cmd', 10)
+        self.pub_autonomy_enable = self.create_publisher(Bool, '/system/autonomy_enable', 10)
         self.sub_estop_state = self.create_subscription(
             Bool, '/vehicle/emergency_stop_state', self.estop_state_callback, 10
+        )
+        self.sub_drive_mode = self.create_subscription(
+            String, '/system/drive_mode', self.drive_mode_callback, 10
         )
 
         period = 1.0 / self.publish_rate_hz
@@ -601,6 +653,31 @@ class WebControlNode(Node):
         msg = Bool()
         msg.data = bool(self.estop)
         self.pub_estop.publish(msg)
+        self.last_published_estop = msg.data
+
+    def publish_drive_mode(self, mode: str):
+        msg = String()
+        msg.data = str(mode).upper().strip()
+        if msg.data not in ('MANUAL', 'AI_INTERVENTION', 'AUTONOMOUS'):
+            self.last_status = f'ignored invalid drive mode: {msg.data}'
+            return
+        self.pub_drive_mode.publish(msg)
+
+        enable = Bool()
+        enable.data = msg.data == 'AUTONOMOUS'
+        self.pub_autonomy_enable.publish(enable)
+
+        self.drive_mode = msg.data
+        self.last_status = f'drive_mode={msg.data}, autonomy_enable={enable.data}'
+
+    def maybe_switch_to_manual_override_mode(self):
+        if not self.auto_switch_mode_on_manual_input:
+            return
+        if self.manual_override_mode not in ('MANUAL', 'AI_INTERVENTION', 'AUTONOMOUS'):
+            return
+        if self.drive_mode == self.manual_override_mode:
+            return
+        self.publish_drive_mode(self.manual_override_mode)
 
     def state_payload(self):
         return {
@@ -608,6 +685,7 @@ class WebControlNode(Node):
             'throttle': float(self.current_throttle),
             'steering': float(self.current_steering),
             'estop': bool(self.estop),
+            'drive_mode': self.drive_mode,
             'status': self.last_status,
         }
 
@@ -618,11 +696,15 @@ class WebControlNode(Node):
         self.estop = bool(msg.data)
         self.last_status = f'estop_state={self.estop}'
 
+    def drive_mode_callback(self, msg: String):
+        self.drive_mode = str(msg.data).upper().strip()
+
     def handle_key(self, key: str):
         if key == 'w':
             if self.estop:
                 self.last_status = 'ignored forward command while estop is active'
                 return
+            self.maybe_switch_to_manual_override_mode()
             self.current_throttle += self.throttle_step
             self.clamp_throttle()
             self.publish_throttle()
@@ -633,6 +715,7 @@ class WebControlNode(Node):
             if self.estop:
                 self.last_status = 'ignored reverse command while estop is active'
                 return
+            self.maybe_switch_to_manual_override_mode()
             self.current_throttle -= self.throttle_step
             self.clamp_throttle()
             self.publish_throttle()
@@ -640,6 +723,7 @@ class WebControlNode(Node):
             self.get_logger().info(f'web key=s throttle={self.current_throttle:.2f}')
 
         elif key == 'x':
+            self.maybe_switch_to_manual_override_mode()
             self.current_throttle = 0.0
             self.publish_throttle()
             self.last_status = 'throttle set to 0.00'
@@ -649,6 +733,7 @@ class WebControlNode(Node):
             if self.estop:
                 self.last_status = 'ignored left steering while estop is active'
                 return
+            self.maybe_switch_to_manual_override_mode()
             self.current_steering -= self.steering_step_cmd
             self.clamp_steering()
             self.publish_steering()
@@ -659,6 +744,7 @@ class WebControlNode(Node):
             if self.estop:
                 self.last_status = 'ignored right steering while estop is active'
                 return
+            self.maybe_switch_to_manual_override_mode()
             self.current_steering += self.steering_step_cmd
             self.clamp_steering()
             self.publish_steering()
@@ -669,6 +755,7 @@ class WebControlNode(Node):
             if self.estop:
                 self.last_status = 'ignored center steering while estop is active'
                 return
+            self.maybe_switch_to_manual_override_mode()
             self.current_steering = 0.0
             self.publish_steering()
             self.last_status = 'steering centered'
@@ -699,6 +786,7 @@ class WebControlNode(Node):
                 self.current_throttle = 0.0
                 self.last_status = 'ignored throttle set while estop is active'
             else:
+                self.maybe_switch_to_manual_override_mode()
                 self.current_throttle = float(throttle)
                 self.clamp_throttle()
                 self.publish_throttle()
@@ -709,6 +797,7 @@ class WebControlNode(Node):
                 self.current_steering = 0.0
                 self.last_status = 'ignored steering set while estop is active'
             else:
+                self.maybe_switch_to_manual_override_mode()
                 self.current_steering = float(steering)
                 self.clamp_steering()
                 self.publish_steering()
@@ -739,6 +828,13 @@ class WebControlNode(Node):
                 self.apply_state_patch(data)
             return jsonify(self.state_payload())
 
+        @self.app.route('/api/set_drive_mode', methods=['POST'])
+        def api_set_drive_mode():
+            data = request.get_json(silent=True) or {}
+            mode = str(data.get('mode', 'MANUAL')).upper().strip()
+            self.publish_drive_mode(mode)
+            return jsonify(self.state_payload())
+
     def run_flask(self):
         self.app.run(host=self.host, port=self.port, debug=False, use_reloader=False)
 
@@ -748,6 +844,8 @@ class WebControlNode(Node):
                 self.handle_key(self.command_queue.popleft())
         self.publish_throttle()
         self.publish_steering()
+        if self.last_published_estop != self.estop:
+            self.publish_estop()
 
 
 def main(args=None):

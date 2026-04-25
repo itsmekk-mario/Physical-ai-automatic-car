@@ -10,4 +10,5 @@ autonomous_driver_node:
     max_throttle_step: 0.01
     autonomy_level: 2
     require_lane: false
+    lane_follow_min_level: 2
     use_detection_hazard: false
