@@ -2,13 +2,17 @@ yolo_web_node:
   ros__parameters:
     host: 0.0.0.0
     port: 8081
-    camera_source: auto
+    # C170 is the primary forward camera for UFLD and object recognition.
+    camera_source: 0
     camera_backend: auto
     camera_sensor_id: 0
     camera_flip_method: 0
     usb_fourcc: default
     model_path: /home/kown/jetcar_ws/models/yolov8n_int8.engine
     image_topic: ''
+    primary_image_publish_topic: /sensors/c170/image_raw
+    primary_frame_id: c170_optical_frame
+    # Stereo remains auxiliary: lane cross-check and depth/distance.
     left_image_topic: /sensors/stereo/left/image_raw
     right_image_topic: /sensors/stereo/right/image_raw
     # all, *, or any means draw and publish every COCO class detected by YOLO.
@@ -22,8 +26,8 @@ yolo_web_node:
     camera_width: 1280
     camera_height: 720
     camera_fps: 60
-    stream_width: 640
-    stream_height: 180
+    stream_width: 960
+    stream_height: 540
     stream_delay_ms: 0
     camera_retry_sec: 1.5
     camera_read_failures_before_reopen: 5

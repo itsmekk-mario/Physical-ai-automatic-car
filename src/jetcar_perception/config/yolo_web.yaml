@@ -12,6 +12,8 @@ yolo_web_node:
     # green frames on some devices. Set MJPG/YUYV only when needed explicitly.
     usb_fourcc: default
     model_path: auto
+    primary_image_publish_topic: /sensors/c170/image_raw
+    primary_frame_id: c170_optical_frame
     # all, *, or any means draw and publish every COCO class detected by YOLO.
     target_classes:
       - all

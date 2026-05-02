@@ -1,7 +1,8 @@
 object_detection_node:
   ros__parameters:
     engine_path: /home/kown/jetcar_ws/models/yolov8n_int8.engine
-    image_topic: /sensors/stereo/left/image_rect
+    # C170 primary camera is published by yolo_web_node when camera_source is USB.
+    image_topic: /sensors/c170/image_raw
     # all, *, or any means publish every COCO class detected by YOLO.
     target_classes:
       - all

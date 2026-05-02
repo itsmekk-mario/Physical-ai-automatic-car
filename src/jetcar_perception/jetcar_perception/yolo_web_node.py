@@ -83,28 +83,33 @@ HTML_PAGE = """
     <title>JetCar Dashboard</title>
     <style>
         :root {
-            --bg: #101214;
-            --panel: #171a1d;
-            --panel-2: #1e2226;
-            --border: #2c3238;
-            --text: #f2f4f5;
-            --muted: #b1b8bf;
-            --accent: #4da3ff;
-            --danger: #d9534f;
-            --ok: #42a66a;
+            color-scheme: dark;
+            --bg: #090b0d;
+            --panel: #121517;
+            --panel-2: #171b1f;
+            --panel-3: #1e2428;
+            --border: #2b3338;
+            --text: #f4f7f5;
+            --muted: #9ca8a3;
+            --accent: #44d7b6;
+            --accent-2: #e8c55a;
+            --danger: #ef615b;
+            --ok: #58c77c;
+            --shadow: 0 18px 46px rgba(0, 0, 0, 0.42);
         }
         * {
             box-sizing: border-box;
         }
         body {
             margin: 0;
-            padding: 16px;
+            padding: 18px;
             font-family: "Segoe UI", "Noto Sans KR", sans-serif;
-            background: var(--bg);
+            background:
+                linear-gradient(180deg, #090b0d 0%, #111618 52%, #090b0d 100%);
             color: var(--text);
         }
         .shell {
-            max-width: 1320px;
+            max-width: 1480px;
             margin: 0 auto;
         }
         .topbar {
@@ -112,48 +117,118 @@ HTML_PAGE = """
             justify-content: space-between;
             align-items: center;
             gap: 12px;
-            margin-bottom: 14px;
+            margin-bottom: 16px;
         }
         .title h1 {
             margin: 0;
-            font-size: 1.8rem;
+            font-size: 1.35rem;
+            letter-spacing: 0;
         }
         .title p {
-            margin: 6px 0 0;
+            margin: 5px 0 0;
             color: var(--muted);
-            font-size: 0.95rem;
+            font-size: 0.86rem;
         }
         .status-pill {
+            min-width: 124px;
             padding: 10px 14px;
             border: 1px solid var(--border);
             border-radius: 999px;
-            background: var(--panel);
+            background: #101416;
             white-space: nowrap;
+            text-align: center;
+            color: var(--accent);
+            font-weight: 800;
         }
         .layout {
             display: grid;
-            grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+            grid-template-columns: minmax(0, 1.68fr) minmax(390px, 0.72fr);
             gap: 16px;
+            align-items: start;
         }
         .panel, .card {
             background: var(--panel);
             border: 1px solid var(--border);
             border-radius: 8px;
+            box-shadow: var(--shadow);
         }
         .panel {
-            padding: 14px;
+            padding: 12px;
         }
         .card {
-            padding: 12px;
+            padding: 14px;
             margin-bottom: 12px;
             background: var(--panel-2);
         }
+        .camera-panel {
+            min-height: calc(100vh - 40px);
+        }
+        .camera-role-grid {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .camera-role {
+            min-height: 76px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #101416;
+            display: grid;
+            align-content: space-between;
+        }
+        .camera-role span {
+            color: var(--muted);
+            font-size: 0.78rem;
+            text-transform: uppercase;
+        }
+        .camera-role strong {
+            font-size: 1rem;
+        }
+        .camera-role.main {
+            border-color: #315d58;
+            background: linear-gradient(180deg, #13211f 0%, #101416 100%);
+        }
+        .camera-role.depth {
+            border-color: #665c34;
+        }
+        .camera-frame {
+            position: relative;
+            overflow: hidden;
+            border-radius: 8px;
+            border: 1px solid #303a40;
+            background:
+                linear-gradient(90deg, rgba(68, 215, 182, 0.08) 1px, transparent 1px),
+                linear-gradient(0deg, rgba(68, 215, 182, 0.06) 1px, transparent 1px),
+                #000;
+            background-size: 42px 42px;
+            min-height: min(66vh, 650px);
+        }
         .stream {
             width: 100%;
+            height: min(66vh, 650px);
+            min-height: 420px;
+            display: block;
             background: #000;
-            border-radius: 8px;
-            min-height: 300px;
             object-fit: contain;
+        }
+        .camera-hud,
+        .camera-stats {
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            pointer-events: none;
+        }
+        .camera-hud {
+            top: 12px;
+            justify-content: space-between;
+        }
+        .camera-stats {
+            bottom: 12px;
         }
         .stats, .mode-row, .btn-row, .pad {
             display: grid;
@@ -168,36 +243,56 @@ HTML_PAGE = """
             width: 100%;
         }
         button {
-            min-height: 48px;
+            min-height: 52px;
             border: 1px solid var(--border);
             border-radius: 8px;
-            background: #252a2f;
+            background: #242b2f;
             color: var(--text);
             font-weight: 700;
             cursor: pointer;
+            transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
         }
         button:hover {
-            background: #2b3137;
+            background: #2c3439;
+            border-color: #405158;
+        }
+        button:active {
+            transform: translateY(1px);
         }
         button.active {
-            outline: 2px solid var(--accent);
-            outline-offset: 0;
-            background: #313944;
+            border-color: var(--accent);
+            background: #213833;
         }
         button.primary {
-            border-color: #3b6ea8;
+            border-color: #315d58;
+        }
+        button.primary.active {
+            color: #05110e;
+            background: linear-gradient(180deg, #65e0c2 0%, #2ea98d 100%);
         }
         button.danger {
-            border-color: #7d3b38;
-            background: #3a2423;
+            border-color: #8d3432;
+            background: #432121;
         }
         button.ok {
-            border-color: #3e6f4d;
-            background: #233126;
+            border-color: #35764d;
+            background: #213527;
         }
         button.stop {
             border-color: #5c6670;
             background: #2c3238;
+        }
+        input[type="range"] {
+            accent-color: var(--accent);
+        }
+        input.vertical-range {
+            width: 38px;
+            height: 264px;
+            writing-mode: vertical-lr;
+            direction: rtl;
         }
         pre {
             white-space: pre-wrap;
@@ -212,19 +307,23 @@ HTML_PAGE = """
             margin-top: 8px;
         }
         .stat {
-            background: #20252a;
+            min-width: 112px;
+            background: rgba(13, 18, 20, 0.78);
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 10px;
+            backdrop-filter: blur(10px);
         }
         .stat label {
             display: block;
-            font-size: 0.82rem;
+            font-size: 0.72rem;
             color: var(--muted);
             margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0;
         }
         .stat strong {
-            font-size: 1.2rem;
+            font-size: 1.25rem;
         }
         .section-title {
             display: flex;
@@ -250,28 +349,37 @@ HTML_PAGE = """
             padding: 6px 10px;
             border-radius: 999px;
             border: 1px solid var(--border);
-            background: #20252a;
+            background: rgba(14, 18, 20, 0.82);
             color: var(--muted);
             font-size: 0.86rem;
         }
         .badge.mode {
             color: var(--text);
-            border-color: #3b6ea8;
+            border-color: #315d58;
         }
         .badge.ai {
             border-color: #5f6b7a;
         }
-        .control-grid {
+        .badge.sensor {
+            border-color: #315d58;
+            color: var(--accent);
+        }
+        .badge.depth {
+            border-color: #665c34;
+            color: var(--accent-2);
+        }
+        .control-deck {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: 116px minmax(0, 1fr);
             gap: 12px;
             margin-top: 8px;
+            align-items: stretch;
         }
         .axis-box {
             padding: 12px;
-            border-radius: 10px;
+            border-radius: 8px;
             border: 1px solid var(--border);
-            background: #20252a;
+            background: var(--panel-3);
         }
         .axis-box h3 {
             margin: 0 0 4px;
@@ -288,6 +396,71 @@ HTML_PAGE = """
         }
         .axis-stack button {
             min-height: 56px;
+        }
+        .throttle-axis {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 10px;
+            min-height: 390px;
+        }
+        .throttle-rail {
+            display: grid;
+            place-items: center;
+            position: relative;
+            min-height: 280px;
+        }
+        .throttle-glow {
+            position: absolute;
+            width: 8px;
+            height: 72%;
+            border-radius: 999px;
+            background: linear-gradient(0deg, #7b3636 0%, #2e3438 50%, #2ebd9e 100%);
+            filter: blur(0.2px);
+            opacity: 0.72;
+        }
+        .steering-axis {
+            display: grid;
+            grid-template-rows: auto auto 1fr;
+            gap: 12px;
+        }
+        .steering-wheel {
+            position: relative;
+            height: 116px;
+            border: 1px solid #334047;
+            border-radius: 8px;
+            background:
+                linear-gradient(90deg, rgba(239, 97, 91, 0.12), transparent 32%, transparent 68%, rgba(68, 215, 182, 0.12)),
+                #111517;
+        }
+        .steering-wheel::before {
+            content: "";
+            position: absolute;
+            left: 18px;
+            right: 18px;
+            top: 55px;
+            height: 4px;
+            border-radius: 999px;
+            background: #334047;
+        }
+        .steering-dot {
+            position: absolute;
+            top: 44px;
+            left: calc(var(--steer-left, 50%) - 14px);
+            width: 28px;
+            height: 28px;
+            border-radius: 999px;
+            border: 2px solid #07100e;
+            background: var(--accent);
+            box-shadow: 0 0 22px rgba(68, 215, 182, 0.45);
+            transition: left 120ms ease;
+        }
+        .steering-range {
+            margin-top: 8px;
+        }
+        .axis-actions {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
         }
         .keycap {
             display: inline-flex;
@@ -312,7 +485,6 @@ HTML_PAGE = """
         .emergency-card {
             border: 1px solid #6f2f34;
             background:
-                radial-gradient(circle at top, rgba(217, 83, 79, 0.18), transparent 45%),
                 linear-gradient(180deg, #2a1719 0%, #201315 100%);
         }
         .emergency-actions {
@@ -351,18 +523,53 @@ HTML_PAGE = """
         a {
             color: var(--accent);
         }
+        .deck-column {
+            display: grid;
+            gap: 12px;
+        }
+        .camera-readout {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: #101416;
+            min-height: 104px;
+        }
         @media (max-width: 980px) {
             .layout {
                 grid-template-columns: 1fr;
             }
+            .camera-panel {
+                min-height: auto;
+            }
+            .stream,
+            .camera-frame {
+                height: auto;
+                min-height: 320px;
+            }
         }
         @media (max-width: 720px) {
+            .camera-role-grid {
+                grid-template-columns: 1fr;
+            }
             .stats, .mode-row, .btn-row {
                 grid-template-columns: repeat(2, 1fr);
             }
-            .control-grid,
+            .control-deck,
             .emergency-actions {
                 grid-template-columns: 1fr;
+            }
+            .throttle-axis {
+                min-height: auto;
+            }
+            input.vertical-range {
+                width: 100%;
+                height: auto;
+                writing-mode: horizontal-tb;
+                direction: ltr;
+            }
+            .throttle-glow {
+                display: none;
             }
             .topbar {
                 flex-direction: column;
@@ -375,36 +582,54 @@ HTML_PAGE = """
     <div class="shell">
         <div class="topbar">
             <div class="title">
-                <h1>JetCar Dashboard</h1>
-                <p>YOLO 영상, 수동 제어, AI 개입 모드를 한 화면에서 확인합니다.</p>
+                <h1>JetCar Vision Deck</h1>
+                <p>C170 primary recognition + stereo assist</p>
             </div>
             <div class="status-pill" id="connectState">Connecting...</div>
         </div>
 
         <div class="layout">
-            <div class="panel">
+            <div class="panel camera-panel">
                 <div class="section-title">
-                    <h2>Camera</h2>
+                    <h2>Camera Array</h2>
                     <span><a href="/stream" target="_blank" rel="noopener">Stream only</a></span>
                 </div>
-                <img class="stream" id="streamImage" alt="stream">
-                <div class="stats">
-                    <div class="stat"><label>Detections</label><strong id="detCount">0</strong></div>
-                    <div class="stat"><label>FPS</label><strong id="fpsValue">0.0</strong></div>
-                    <div class="stat"><label>Det FPS</label><strong id="detFpsValue">0.0</strong></div>
+                <div class="camera-role-grid">
+                    <div class="camera-role main">
+                        <span>C170 primary</span>
+                        <strong>UFLD lane + object</strong>
+                    </div>
+                    <div class="camera-role">
+                        <span>Stereo left</span>
+                        <strong>Lane assist</strong>
+                    </div>
+                    <div class="camera-role depth">
+                        <span>Stereo right</span>
+                        <strong>Depth pair</strong>
+                    </div>
                 </div>
-                <pre id="visionText">Loading...</pre>
+                <div class="camera-frame">
+                    <img class="stream" id="streamImage" alt="stream">
+                    <div class="camera-hud">
+                        <div class="badge mode" id="selectedSourceBadge">selected: MANUAL</div>
+                        <div class="badge ai" id="safetyBadge">AI override: false</div>
+                        <div class="badge sensor">C170: UFLD + object</div>
+                        <div class="badge depth" id="depthBadge">depth: waiting</div>
+                    </div>
+                    <div class="camera-stats">
+                        <div class="stat"><label>Detections</label><strong id="detCount">0</strong></div>
+                        <div class="stat"><label>FPS</label><strong id="fpsValue">0.0</strong></div>
+                        <div class="stat"><label>Det FPS</label><strong id="detFpsValue">0.0</strong></div>
+                    </div>
+                </div>
+                <pre class="camera-readout" id="visionText">Loading...</pre>
             </div>
 
-            <div>
+            <div class="deck-column">
                 <div class="card">
                     <div class="section-title">
                         <h2>Drive Mode</h2>
                         <span id="modeValue">MANUAL</span>
-                    </div>
-                    <div class="badge-row">
-                        <div class="badge mode" id="selectedSourceBadge">selected: MANUAL</div>
-                        <div class="badge ai" id="safetyBadge">AI override: false</div>
                     </div>
                     <div class="mode-row">
                         <button class="primary" data-mode="MANUAL">MANUAL</button>
@@ -415,16 +640,34 @@ HTML_PAGE = """
 
                 <div class="card">
                     <div class="section-title">
-                        <h2>Throttle</h2>
-                        <span id="throttleValue">0.00</span>
+                        <h2>Drive Axes</h2>
+                        <span><span id="throttleValue">0.00</span> / <span id="steeringValue">0.00</span></span>
                     </div>
-                    <input id="throttleSlider" type="range" min="-100" max="100" value="0" step="1">
+                    <div class="control-deck">
+                        <div class="axis-box throttle-axis">
+                            <button data-key="w">FWD</button>
+                            <div class="throttle-rail">
+                                <div class="throttle-glow"></div>
+                                <input class="vertical-range" id="throttleSlider" type="range" min="-100" max="100" value="0" step="1">
+                            </div>
+                            <button data-key="s">REV</button>
+                        </div>
+                        <div class="axis-box steering-axis">
+                            <div class="axis-actions">
+                                <button data-key="a">LEFT</button>
+                                <button class="stop" data-key="c">CENTER</button>
+                                <button data-key="d">RIGHT</button>
+                            </div>
+                            <div class="steering-wheel">
+                                <div class="steering-dot" id="steeringDot"></div>
+                            </div>
+                            <input class="steering-range" id="steeringSlider" type="range" min="-100" max="100" value="0" step="1">
+                        </div>
+                    </div>
                     <div class="btn-row">
-                        <button data-throttle="-40">REV 40%</button>
-                        <button data-throttle="-20">REV 20%</button>
-                        <button data-action="stop">STOP</button>
-                        <button data-throttle="20">FWD 20%</button>
-                        <button data-throttle="40">FWD 40%</button>
+                        <button data-throttle="-30">REV 30%</button>
+                        <button class="stop" data-action="stop">STOP</button>
+                        <button data-throttle="30">FWD 30%</button>
                     </div>
                 </div>
 
@@ -441,49 +684,6 @@ HTML_PAGE = """
                         <button data-action="cruise-on">CRUISE ON</button>
                         <button data-action="cruise-off">CRUISE OFF</button>
                     </div>
-                </div>
-
-                <div class="card">
-                    <div class="section-title">
-                        <h2>Steering</h2>
-                        <span id="steeringValue">0.00</span>
-                    </div>
-                    <input id="steeringSlider" type="range" min="-100" max="100" value="0" step="1">
-                    <div class="btn-row">
-                        <button data-steering="-100">HARD L</button>
-                        <button data-steering="-40">LEFT</button>
-                        <button data-action="center">CENTER</button>
-                        <button data-steering="40">RIGHT</button>
-                        <button data-steering="100">HARD R</button>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="section-title">
-                        <h2>Manual Control</h2>
-                        <span>Hold to repeat</span>
-                    </div>
-                    <div class="control-grid">
-                        <div class="axis-box">
-                            <h3>Throttle Axis</h3>
-                            <p><span class="keycap">W</span>forward / <span class="keycap">S</span>reverse</p>
-                            <div class="axis-stack">
-                                <button data-key="w"><span class="button-copy"><span class="keycap">W</span>Forward</span></button>
-                                <button class="stop" data-key="x"><span class="button-copy"><span class="keycap">X</span>Brake</span></button>
-                                <button data-key="s"><span class="button-copy"><span class="keycap">S</span>Reverse</span></button>
-                            </div>
-                        </div>
-                        <div class="axis-box">
-                            <h3>Steering Axis</h3>
-                            <p><span class="keycap">A</span>left / <span class="keycap">D</span>right</p>
-                            <div class="axis-stack">
-                                <button data-key="a"><span class="button-copy"><span class="keycap">A</span>Left</span></button>
-                                <button data-key="c"><span class="button-copy"><span class="keycap">C</span>Center</span></button>
-                                <button data-key="d"><span class="button-copy"><span class="keycap">D</span>Right</span></button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="meta">Keyboard: `W/S`는 전진/후진, `A/D`는 좌/우 조향, `X`는 브레이크, `C`는 조향 중앙 복귀입니다.</div>
                 </div>
 
                 <div class="card emergency-card">
@@ -503,7 +703,6 @@ HTML_PAGE = """
                 </div>
             </div>
         </div>
-        <div class="meta">다른 기기에서 접속할 때는 `127.0.0.1`이 아니라 Jetson IP를 사용해야 합니다.</div>
     </div>
 
     <script>
@@ -538,9 +737,15 @@ HTML_PAGE = """
                 data.cruise_enabled ? `ON ${Math.round(Number(data.cruise_throttle) * 100)}%` : 'OFF';
             document.getElementById('selectedSourceBadge').textContent = `selected: ${data.selected_source}`;
             document.getElementById('safetyBadge').textContent = `AI override: ${data.safety_override}`;
+            document.getElementById('depthBadge').textContent = `depth: ${data.depth_ready ? 'ready' : 'waiting'} / ${Number(data.min_distance_m).toFixed(2)}m`;
             throttleSlider.value = Math.round(Number(data.throttle) * 100);
             cruiseSlider.value = Math.round(Number(data.cruise_throttle) * 100);
-            steeringSlider.value = Math.round(Number(data.steering) * 100);
+            const steeringPercent = Math.round(Number(data.steering) * 100);
+            steeringSlider.value = steeringPercent;
+            document.getElementById('steeringDot').style.setProperty('--steer-left', `${50 + steeringPercent * 0.4}%`);
+            document.querySelectorAll('[data-mode]').forEach(function(button) {
+                button.classList.toggle('active', button.dataset.mode === data.drive_mode);
+            });
             document.getElementById('controlText').textContent =
                 `mode=${data.drive_mode}\n` +
                 `selected=${data.selected_source}\n` +
@@ -726,6 +931,8 @@ class YoloWebNode(Node):
         self.declare_parameter('usb_fourcc', 'default')
         self.declare_parameter('model_path', 'auto')
         self.declare_parameter('image_topic', '')
+        self.declare_parameter('primary_image_publish_topic', '/sensors/c170/image_raw')
+        self.declare_parameter('primary_frame_id', 'c170_optical_frame')
         self.declare_parameter('left_image_topic', '')
         self.declare_parameter('right_image_topic', '')
         self.declare_parameter('target_classes', ['all'])
@@ -765,6 +972,8 @@ class YoloWebNode(Node):
         self.usb_fourcc = str(self.get_parameter('usb_fourcc').value).upper().strip()
         self.model_path = str(self.get_parameter('model_path').value)
         self.image_topic = str(self.get_parameter('image_topic').value).strip()
+        self.primary_image_publish_topic = str(self.get_parameter('primary_image_publish_topic').value).strip()
+        self.primary_frame_id = str(self.get_parameter('primary_frame_id').value).strip() or 'c170_optical_frame'
         self.left_image_topic = str(self.get_parameter('left_image_topic').value).strip()
         self.right_image_topic = str(self.get_parameter('right_image_topic').value).strip()
         self.target_classes = [str(name) for name in self.get_parameter('target_classes').value]
@@ -804,6 +1013,11 @@ class YoloWebNode(Node):
         )
 
         self.ready_pub = self.create_publisher(Bool, '/perception/detections/ready', 10)
+        self.primary_image_pub = (
+            self.create_publisher(Image, self.primary_image_publish_topic, 10)
+            if self.primary_image_publish_topic
+            else None
+        )
         self.hazard_pub = self.create_publisher(Bool, '/perception/detections/hazard', 10)
         self.person_pub = self.create_publisher(Bool, '/perception/detections/person_detected', 10)
         self.closest_pub = self.create_publisher(Float32, '/perception/detections/closest_confidence', 10)
@@ -845,6 +1059,8 @@ class YoloWebNode(Node):
         self.model_runtime = 'uninitialized'
         self.model_search_paths = []
         self.active_camera_source = ''
+        self.primary_camera_source = ''
+        self.stereo_camera_source = ''
         self.latest_detections = []
         self.pending_frame = None
         self.stop_event = threading.Event()
@@ -932,7 +1148,8 @@ class YoloWebNode(Node):
             self.topic_frame = frame
             self.topic_frame_time = time.monotonic()
             self.topic_frame_id += 1
-        self.active_camera_source = f'ros:{self.image_topic}'
+        self.primary_camera_source = f'ros:{self.image_topic}'
+        self.active_camera_source = self.primary_camera_source
 
     def left_image_topic_cb(self, msg: Image):
         frame = self.image_to_bgr(msg)
@@ -940,7 +1157,7 @@ class YoloWebNode(Node):
             self.left_topic_frame = frame
             self.left_topic_frame_time = time.monotonic()
             self.left_topic_frame_id += 1
-        self.active_camera_source = f'ros:{self.left_image_topic}+{self.right_image_topic}'
+        self.stereo_camera_source = f'ros:{self.left_image_topic}+{self.right_image_topic}'
 
     def right_image_topic_cb(self, msg: Image):
         frame = self.image_to_bgr(msg)
@@ -948,7 +1165,7 @@ class YoloWebNode(Node):
             self.right_topic_frame = frame
             self.right_topic_frame_time = time.monotonic()
             self.right_topic_frame_id += 1
-        self.active_camera_source = f'ros:{self.left_image_topic}+{self.right_image_topic}'
+        self.stereo_camera_source = f'ros:{self.left_image_topic}+{self.right_image_topic}'
 
     def compose_stereo_frame(self, left_frame, right_frame):
         if left_frame is None and right_frame is None:
@@ -960,6 +1177,112 @@ class YoloWebNode(Node):
         if left_frame.shape[:2] != right_frame.shape[:2]:
             right_frame = cv2.resize(right_frame, (left_frame.shape[1], left_frame.shape[0]), interpolation=cv2.INTER_AREA)
         return np.hstack((left_frame, right_frame))
+
+    def make_placeholder_frame(self, width: int, height: int, title: str, subtitle: str = 'waiting for camera'):
+        width = max(1, int(width))
+        height = max(1, int(height))
+        frame = np.full((height, width, 3), (12, 16, 18), dtype=np.uint8)
+        step = max(32, min(width, height) // 5)
+        for x in range(0, width, step):
+            cv2.line(frame, (x, 0), (x, height), (38, 48, 52), 1)
+        for y in range(0, height, step):
+            cv2.line(frame, (0, y), (width, y), (38, 48, 52), 1)
+        cv2.line(frame, (width // 2, 0), (width // 2, height), (55, 65, 70), 1)
+        cv2.line(frame, (0, height // 2), (width, height // 2), (55, 65, 70), 1)
+        self.draw_camera_panel_label(frame, title, subtitle, color=(150, 168, 163))
+        cv2.putText(
+            frame,
+            'NO SIGNAL',
+            (max(16, width // 2 - 74), max(58, height // 2 + 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.72,
+            (150, 168, 163),
+            2,
+            cv2.LINE_AA,
+        )
+        return frame
+
+    def resize_panel_frame(self, frame, width: int, height: int, title: str, subtitle: str):
+        if frame is None:
+            return self.make_placeholder_frame(width, height, title, subtitle)
+        frame = self.normalize_frame(frame)
+        return cv2.resize(frame, (max(1, int(width)), max(1, int(height))), interpolation=cv2.INTER_AREA)
+
+    def draw_camera_panel_label(self, frame, title: str, subtitle: str = '', color=(68, 215, 182)):
+        if frame is None:
+            return
+        height, width = frame.shape[:2]
+        label_width = min(width, max(220, int(width * 0.42)))
+        cv2.rectangle(frame, (0, 0), (label_width, min(58, height)), (10, 14, 16), -1)
+        cv2.rectangle(frame, (0, 0), (label_width, min(58, height)), color, 1)
+        cv2.putText(
+            frame,
+            str(title)[:32],
+            (12, 24),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.62,
+            color,
+            2,
+            cv2.LINE_AA,
+        )
+        if subtitle:
+            cv2.putText(
+                frame,
+                str(subtitle)[:42],
+                (12, 47),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.46,
+                (235, 242, 238),
+                1,
+                cv2.LINE_AA,
+            )
+
+    def prepare_three_camera_stream_frames(self, primary_frame, left_frame, right_frame):
+        if primary_frame is None and left_frame is None and right_frame is None:
+            return None, None
+
+        target_width = self.stream_width if self.stream_width > 0 else 960
+        target_height = self.stream_height if self.stream_height > 0 else 540
+        main_height = max(1, int(target_height * 0.67))
+        stereo_height = max(1, target_height - main_height)
+        if stereo_height < 120 and target_height >= 360:
+            stereo_height = 160
+            main_height = max(1, target_height - stereo_height)
+
+        left_width = max(1, target_width // 2)
+        right_width = max(1, target_width - left_width)
+
+        primary_display = self.resize_panel_frame(
+            primary_frame,
+            target_width,
+            main_height,
+            'C170 PRIMARY',
+            'UFLD lane + object detection',
+        )
+        left_display = self.resize_panel_frame(
+            left_frame,
+            left_width,
+            stereo_height,
+            'STEREO LEFT',
+            'aux lane recognition',
+        )
+        right_display = self.resize_panel_frame(
+            right_frame,
+            right_width,
+            stereo_height,
+            'STEREO RIGHT',
+            'depth and distance pair',
+        )
+        detector_input = primary_display.copy() if primary_frame is not None else None
+
+        self.draw_lane_overlay(primary_display)
+        self.draw_lane_overlay(left_display)
+        self.draw_camera_panel_label(primary_display, 'C170 PRIMARY', 'UFLD lane + object detection')
+        self.draw_camera_panel_label(left_display, 'STEREO LEFT', 'aux lane recognition', color=(68, 215, 182))
+        self.draw_camera_panel_label(right_display, 'STEREO RIGHT', 'depth and distance pair', color=(90, 196, 232))
+
+        stereo_row = np.hstack((left_display, right_display))
+        return np.vstack((primary_display, stereo_row)), detector_input
 
     def prepare_stereo_stream_frames(self, left_frame, right_frame):
         if left_frame is None and right_frame is None:
@@ -976,8 +1299,11 @@ class YoloWebNode(Node):
 
         left_display = cv2.resize(left_frame, (left_width, target_height), interpolation=cv2.INTER_AREA)
         right_display = cv2.resize(right_frame, (right_width, target_height), interpolation=cv2.INTER_AREA)
+        detector_input = left_display.copy()
         self.draw_lane_overlay(left_display)
-        return np.hstack((left_display, right_display)), left_display
+        self.draw_camera_panel_label(left_display, 'STEREO LEFT', 'aux lane recognition', color=(68, 215, 182))
+        self.draw_camera_panel_label(right_display, 'STEREO RIGHT', 'depth and distance pair', color=(90, 196, 232))
+        return np.hstack((left_display, right_display)), detector_input
 
     def draw_lane_overlay(self, frame):
         if not self.draw_lane_overlay_enabled or frame is None:
@@ -1130,10 +1456,27 @@ class YoloWebNode(Node):
         channels = 1 if msg.encoding == 'mono8' else 3
         frame = np.frombuffer(msg.data, dtype=np.uint8).reshape((msg.height, msg.width, channels))
         if msg.encoding == 'rgb8':
-            return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         if msg.encoding == 'mono8':
             return cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
         return frame
+
+    def publish_primary_image(self, frame):
+        if self.primary_image_pub is None or frame is None:
+            return
+        if self.image_topic and self.primary_image_publish_topic == self.image_topic:
+            return
+        frame = self.normalize_frame(frame)
+        msg = Image()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = self.primary_frame_id
+        msg.height = int(frame.shape[0])
+        msg.width = int(frame.shape[1])
+        msg.encoding = 'bgr8'
+        msg.is_bigendian = False
+        msg.step = int(frame.shape[1] * 3)
+        msg.data = frame.tobytes()
+        self.primary_image_pub.publish(msg)
 
     def publish_status_frame(self, text: str):
         jpeg = self.encode_frame(self.make_status_frame(text))
@@ -1450,61 +1793,143 @@ class YoloWebNode(Node):
         if self.camera_fps > 0:
             capture.set(cv2.CAP_PROP_FPS, self.camera_fps)
 
+    def direct_primary_camera_enabled(self):
+        source = self.camera_source.lower().strip()
+        return not self.image_topic and source not in ('', 'none', 'off', 'disabled')
+
+    def describe_camera_array(self, primary_ready: bool, left_ready: bool, right_ready: bool):
+        primary_source = self.primary_camera_source or (
+            f'ros:{self.image_topic}' if self.image_topic else self.camera_source
+        )
+        left_source = f'ros:{self.left_image_topic}' if self.left_image_topic else 'disabled'
+        right_source = f'ros:{self.right_image_topic}' if self.right_image_topic else 'disabled'
+        return (
+            f'C170 primary={primary_source}({"ready" if primary_ready else "waiting"}); '
+            f'stereo_left={left_source}({"ready" if left_ready else "waiting"}); '
+            f'stereo_right={right_source}({"ready" if right_ready else "waiting"})'
+        )
+
     def capture_loop(self):
         if self.left_image_topic or self.right_image_topic:
             last_time = time.monotonic()
+            last_primary_id = -1
             last_left_id = -1
             last_right_id = -1
+            direct_primary_id = 0
+            primary_capture = None
+            primary_read_failures = 0
+            last_primary_retry = 0.0
             waiting_logged = False
-            while not self.stop_event.is_set():
-                with self.topic_frame_lock:
-                    left_frame = self.left_topic_frame
-                    right_frame = self.right_topic_frame
-                    left_time = self.left_topic_frame_time
-                    right_time = self.right_topic_frame_time
-                    left_id = self.left_topic_frame_id
-                    right_id = self.right_topic_frame_id
-                left_age = 999.0 if left_time is None else max(0.0, time.monotonic() - left_time)
-                right_age = 999.0 if right_time is None else max(0.0, time.monotonic() - right_time)
-                left_fresh = left_frame if left_age <= 2.0 else None
-                right_fresh = right_frame if right_age <= 2.0 else None
-                current_left_id = left_id if left_fresh is not None else -1
-                current_right_id = right_id if right_fresh is not None else -1
-                if current_left_id == last_left_id and current_right_id == last_right_id:
-                    self.stop_event.wait(0.002)
-                    continue
-                last_left_id = current_left_id
-                last_right_id = current_right_id
-                frame, detector_input = self.prepare_stereo_stream_frames(
-                    left_fresh,
-                    right_fresh,
-                )
-                if frame is None:
-                    status = f'waiting for stereo image topics: {self.left_image_topic} | {self.right_image_topic}'
-                    self.publish_status_frame(status)
-                    self.update_camera_status(status, log_level='info', force_log=not waiting_logged)
-                    waiting_logged = True
-                    self.stop_event.wait(0.05)
-                    continue
+            use_direct_primary = self.direct_primary_camera_enabled()
+            try:
+                while not self.stop_event.is_set():
+                    primary_frame = None
+                    primary_ready = False
+                    current_primary_id = -1
+                    now = time.monotonic()
 
-                waiting_logged = False
-                if self.object_detection_enabled and self.model is not None and detector_input is not None and left_age <= 2.0:
-                    self.submit_detection_frame(detector_input)
-                    with self.detection_lock:
-                        detections = list(self.latest_detections)
-                    self.draw_detections(frame, detections)
+                    if self.image_topic:
+                        with self.topic_frame_lock:
+                            topic_frame = self.topic_frame
+                            topic_time = self.topic_frame_time
+                            topic_id = self.topic_frame_id
+                        topic_age = 999.0 if topic_time is None else max(0.0, now - topic_time)
+                        if topic_frame is not None and topic_age <= 2.0:
+                            primary_frame = topic_frame
+                            primary_ready = True
+                            current_primary_id = topic_id
+                    elif use_direct_primary:
+                        if primary_capture is None or not primary_capture.isOpened():
+                            if now - last_primary_retry >= self.camera_retry_sec:
+                                primary_capture = self.open_capture()
+                                self.primary_camera_source = self.active_camera_source or self.camera_source
+                                primary_read_failures = 0
+                                last_primary_retry = now
+                        if primary_capture is not None and primary_capture.isOpened():
+                            ok, direct_frame = self.read_frame(primary_capture)
+                            if ok and direct_frame is not None:
+                                primary_frame = direct_frame
+                                primary_ready = True
+                                direct_primary_id += 1
+                                current_primary_id = direct_primary_id
+                                primary_read_failures = 0
+                            else:
+                                primary_read_failures += 1
+                                if primary_read_failures >= self.camera_read_failures_before_reopen:
+                                    status = f'C170 primary read failed, reopening: {self.primary_camera_source}'
+                                    self.update_camera_status(status, log_level='warning')
+                                    primary_capture.release()
+                                    primary_capture = None
+                                    primary_read_failures = 0
 
-                now = time.monotonic()
-                elapsed = max(now - last_time, 0.001)
-                last_time = now
-                jpeg = self.encode_frame(frame)
-                if jpeg is None:
-                    continue
-                with self.frame_lock:
-                    self.latest_jpeg = jpeg
-                    self.latest_frame_id += 1
-                    self.latest_ready = True
-                    self.latest_fps = 1.0 / elapsed
+                    if primary_ready:
+                        self.publish_primary_image(primary_frame)
+
+                    with self.topic_frame_lock:
+                        left_frame = self.left_topic_frame
+                        right_frame = self.right_topic_frame
+                        left_time = self.left_topic_frame_time
+                        right_time = self.right_topic_frame_time
+                        left_id = self.left_topic_frame_id
+                        right_id = self.right_topic_frame_id
+                    sample_time = time.monotonic()
+                    left_age = 999.0 if left_time is None else max(0.0, sample_time - left_time)
+                    right_age = 999.0 if right_time is None else max(0.0, sample_time - right_time)
+                    left_fresh = left_frame if left_age <= 2.0 else None
+                    right_fresh = right_frame if right_age <= 2.0 else None
+                    left_ready = left_fresh is not None
+                    right_ready = right_fresh is not None
+                    current_left_id = left_id if left_ready else -1
+                    current_right_id = right_id if right_ready else -1
+
+                    if (
+                        current_primary_id == last_primary_id
+                        and current_left_id == last_left_id
+                        and current_right_id == last_right_id
+                    ):
+                        self.stop_event.wait(0.002)
+                        continue
+                    last_primary_id = current_primary_id
+                    last_left_id = current_left_id
+                    last_right_id = current_right_id
+
+                    frame, detector_input = self.prepare_three_camera_stream_frames(
+                        primary_frame,
+                        left_fresh,
+                        right_fresh,
+                    )
+                    if frame is None:
+                        status = 'waiting for C170 primary or stereo image topics'
+                        self.publish_status_frame(status)
+                        self.update_camera_status(status, log_level='info', force_log=not waiting_logged)
+                        waiting_logged = True
+                        self.stop_event.wait(0.05)
+                        continue
+
+                    waiting_logged = False
+                    self.active_camera_source = self.describe_camera_array(primary_ready, left_ready, right_ready)
+                    if self.object_detection_enabled and self.model is not None and detector_input is not None:
+                        self.submit_detection_frame(detector_input)
+                        with self.detection_lock:
+                            detections = list(self.latest_detections)
+                        self.draw_detections(frame, detections)
+                    elif self.object_detection_enabled and detector_input is None:
+                        self.mark_detection_unavailable('waiting for C170 primary camera')
+
+                    now = time.monotonic()
+                    elapsed = max(now - last_time, 0.001)
+                    last_time = now
+                    jpeg = self.encode_frame(frame)
+                    if jpeg is None:
+                        continue
+                    with self.frame_lock:
+                        self.latest_jpeg = jpeg
+                        self.latest_frame_id += 1
+                        self.latest_ready = True
+                        self.latest_fps = 1.0 / elapsed
+            finally:
+                if primary_capture is not None:
+                    primary_capture.release()
             return
 
         if self.image_topic:
@@ -1530,6 +1955,7 @@ class YoloWebNode(Node):
                 last_frame_id = frame_id
 
                 waiting_logged = False
+                self.publish_primary_image(frame)
                 frame = self.prepare_stream_frame(frame)
                 if self.object_detection_enabled and self.model is not None:
                     self.submit_detection_frame(frame)
@@ -1574,6 +2000,7 @@ class YoloWebNode(Node):
                     continue
 
                 read_failures = 0
+                self.publish_primary_image(frame)
                 frame = self.prepare_stream_frame(frame)
                 if self.object_detection_enabled and self.model is not None:
                     self.submit_detection_frame(frame)
@@ -1644,6 +2071,16 @@ class YoloWebNode(Node):
             self.detector_frame = frame.copy()
         self.detector_event.set()
 
+    def mark_detection_unavailable(self, status: str):
+        with self.detection_lock:
+            self.latest_detections = []
+            self.detector_frame = None
+        with self.frame_lock:
+            self.latest_detection_count = 0
+            self.latest_hazard = False
+            self.latest_confidence = 0.0
+            self.latest_status = status
+
     def detection_loop(self):
         while not self.stop_event.is_set():
             if self.model is None:
@@ -1680,12 +2117,14 @@ class YoloWebNode(Node):
                     self.latest_status = detection_error or 'ok'
 
     def make_status_frame(self, text):
-        frame = np.full((360, 640, 3), (20, 20, 20), dtype=np.uint8)
+        width = self.stream_width if self.stream_width > 0 else 640
+        height = self.stream_height if self.stream_height > 0 else 360
+        frame = np.full((height, width, 3), (20, 20, 20), dtype=np.uint8)
         for index, line in enumerate(self.wrap_text(text, 48)[:5]):
             cv2.putText(
                 frame,
                 line,
-                (24, 130 + index * 34),
+                (24, max(60, height // 3) + index * 34),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
                 (240, 240, 240),

@@ -19,9 +19,9 @@ def generate_launch_description():
         'right_image_topic': '/sensors/stereo/right/image_raw',
         'manual_override_mode': 'AI_INTERVENTION',
         'enable_object_detection': False,
-        'stream_width': 480,
-        'stream_height': 135,
-        'jpeg_quality': 35,
+        'stream_width': 960,
+        'stream_height': 540,
+        'jpeg_quality': 50,
         'stream_delay_ms': 0,
     }
 

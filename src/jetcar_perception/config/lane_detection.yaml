@@ -5,7 +5,8 @@ lane_detection_node:
     heading_error_deg: 0.0
     lane_confidence: 0.9
     assist_gain: 1.4
-    image_topic: /sensors/stereo/left/image_raw
+    # C170 primary camera is published by yolo_web_node when camera_source is USB.
+    image_topic: /sensors/c170/image_raw
     meters_per_pixel: 0.0025
     roi_top_fraction: 0.58
     min_lane_pixels: 150

@@ -132,7 +132,7 @@ ros2 launch jetcar_perception stereo_depth.launch.py
 ros2 launch jetcar_perception lane_detection.launch.py
 ```
 
-기본 차선 인식 backend는 UFLD입니다. `lane_detection_node`는 기존 ROS 토픽(`/perception/lane/ready`, `/perception/lane/offset_m`, `/perception/lane/heading_error_deg`, `/perception/lane/confidence`, `/perception/lane/suggested_steering`, `/perception/lane/status`)을 그대로 발행하므로 decision/control 스택은 변경하지 않아도 됩니다.
+기본 차선 인식 backend는 UFLD입니다. C170 전방 카메라가 `/sensors/c170/image_raw`로 발행되고, `lane_detection_node`가 이 토픽을 UFLD 입력으로 사용합니다. 기존 ROS 토픽(`/perception/lane/ready`, `/perception/lane/offset_m`, `/perception/lane/heading_error_deg`, `/perception/lane/confidence`, `/perception/lane/suggested_steering`, `/perception/lane/status`)은 그대로 발행하므로 decision/control 스택은 변경하지 않아도 됩니다.
 
 UFLD 모델은 저장소에 포함하지 않습니다. TorchScript 또는 ONNX로 export한 UFLD v1 모델을 Jetson에 두고 `src/jetcar_perception/config/lane_detection.yaml`의 `model_path`를 맞춥니다.
 
@@ -159,11 +159,11 @@ ros2 topic echo /perception/lane/status
 ros2 launch jetcar_perception object_detection.launch.py
 ```
 
-`object_detection.launch.py`는 현재 스테레오 카메라, rectification, 객체검출, 차선인식, YOLO 웹 뷰를 함께 띄웁니다.
+`object_detection.launch.py`는 현재 C170 웹 카메라, 스테레오 카메라, rectification, 객체검출, 차선인식, YOLO 웹 뷰를 함께 띄웁니다. 객체검출도 기본적으로 `/sensors/c170/image_raw`를 사용합니다.
 
 ## YOLO Web View
 
-기본 설정은 `src/jetcar_perception/config/yolo_web_stereo.yaml`입니다. 웹 화면은 좌우 스테레오 영상을 나란히 보여주고, YOLO 박스는 왼쪽 영상 기준으로 표시합니다.
+기본 설정은 `src/jetcar_perception/config/yolo_web_stereo.yaml`입니다. 웹 화면은 C170을 상단 메인 패널로 크게 보여주고, 하단에 stereo left/right를 보조 패널로 배치합니다. C170은 UFLD 차선 인식과 객체 인식용이고, stereo left/right는 차선 보조 인식과 depth/distance 용도입니다.
 
 모델 파일은 둘 중 하나를 준비하면 됩니다.
 
@@ -369,7 +369,7 @@ python3 servo_manual_step.py
 - `src/jetcar_perception/config/stereo_depth.yaml`: depth 추정 파라미터
 - `src/jetcar_perception/config/lane_detection.yaml`: UFLD 차선 인식 모델, row anchor, 조향 보조 파라미터
 - `src/jetcar_perception/config/object_detection.yaml`: YOLO detection 설정
-- `src/jetcar_perception/config/yolo_web_stereo.yaml`: 8081 스테레오 웹 뷰 설정
+- `src/jetcar_perception/config/yolo_web_stereo.yaml`: 8081 C170 + stereo 3카메라 웹 뷰 설정
 - `src/jetcar_decision/config/*.yaml`: safety, autonomy 관련 파라미터
 - `src/jetcar_research/config/research_profiles.yaml`: 연구 프로파일
 

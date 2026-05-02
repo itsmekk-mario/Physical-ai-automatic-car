@@ -18,74 +18,78 @@ HTML_PAGE = """
     <style>
         :root {
             color-scheme: dark;
-            --bg: #0e1719;
-            --panel: rgba(13, 29, 33, 0.88);
-            --panel-strong: #173339;
-            --line: rgba(165, 230, 214, 0.16);
-            --text: #eef7f3;
-            --muted: #9ab7b0;
-            --accent: #4dd7a8;
-            --accent-strong: #1bb980;
-            --danger: #f15c52;
-            --warn: #efb74b;
-            --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+            --bg: #090b0d;
+            --panel: #121517;
+            --panel-2: #171b1f;
+            --panel-3: #1e2428;
+            --border: #2b3338;
+            --text: #f4f7f5;
+            --muted: #9ca8a3;
+            --accent: #44d7b6;
+            --accent-2: #e8c55a;
+            --danger: #ef615b;
+            --ok: #58c77c;
+            --shadow: 0 18px 46px rgba(0, 0, 0, 0.42);
+        }
+        * {
+            box-sizing: border-box;
         }
         body {
             font-family: "Segoe UI", "Noto Sans KR", sans-serif;
             background:
-                radial-gradient(circle at top left, rgba(77, 215, 168, 0.18), transparent 28%),
-                radial-gradient(circle at top right, rgba(241, 92, 82, 0.14), transparent 22%),
-                linear-gradient(180deg, #071012 0%, #0d191c 100%);
+                linear-gradient(180deg, #090b0d 0%, #111618 52%, #090b0d 100%);
             color: var(--text);
             margin: 0;
             min-height: 100vh;
         }
         .shell {
-            max-width: 1120px;
+            max-width: 1180px;
             margin: 0 auto;
-            padding: 24px 18px 40px;
+            padding: 18px;
         }
         .hero {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 16px;
-            margin-bottom: 18px;
+            gap: 12px;
+            margin-bottom: 16px;
         }
         .hero h1 {
             margin: 0;
-            font-size: clamp(2rem, 5vw, 3.3rem);
-            letter-spacing: 0.04em;
+            font-size: 1.35rem;
+            letter-spacing: 0;
             font-weight: 800;
         }
         .hero p {
-            margin: 6px 0 0;
+            margin: 5px 0 0;
             color: var(--muted);
-            max-width: 720px;
+            font-size: 0.86rem;
         }
         .badge {
+            min-width: 124px;
             padding: 10px 14px;
             border-radius: 999px;
-            background: rgba(77, 215, 168, 0.12);
-            border: 1px solid rgba(77, 215, 168, 0.3);
-            color: #c8ffef;
-            font-size: 0.95rem;
+            background: #101416;
+            border: 1px solid var(--border);
+            color: var(--accent);
+            font-size: 0.94rem;
+            font-weight: 800;
             white-space: nowrap;
+            text-align: center;
         }
         .layout {
             display: grid;
             grid-template-columns: 1.2fr 0.9fr;
-            gap: 18px;
+            gap: 16px;
         }
         .panel {
             background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 24px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
             box-shadow: var(--shadow);
-            backdrop-filter: blur(18px);
         }
         .panel-inner {
-            padding: 20px;
+            padding: 14px;
         }
         .meter-grid {
             display: grid;
@@ -94,9 +98,9 @@ HTML_PAGE = """
             margin-bottom: 16px;
         }
         .stat {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 18px;
+            background: #101416;
+            border: 1px solid var(--border);
+            border-radius: 8px;
             padding: 14px;
         }
         .stat label {
@@ -105,7 +109,7 @@ HTML_PAGE = """
             font-size: 0.84rem;
             margin-bottom: 8px;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
+            letter-spacing: 0;
         }
         .stat strong {
             font-size: 1.75rem;
@@ -121,9 +125,9 @@ HTML_PAGE = """
             gap: 16px;
         }
         .control-card {
-            background: rgba(255, 255, 255, 0.025);
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: var(--panel-2);
+            border-radius: 8px;
+            border: 1px solid var(--border);
             padding: 18px;
         }
         .control-head {
@@ -135,8 +139,8 @@ HTML_PAGE = """
         .control-head h2 {
             margin: 0;
             font-size: 1rem;
-            letter-spacing: 0.04em;
             text-transform: uppercase;
+            letter-spacing: 0;
         }
         .control-head span {
             color: var(--muted);
@@ -145,6 +149,85 @@ HTML_PAGE = """
         input[type="range"] {
             width: 100%;
             accent-color: var(--accent);
+        }
+        input.vertical-range {
+            width: 38px;
+            height: 260px;
+            writing-mode: vertical-lr;
+            direction: rtl;
+        }
+        .drive-axes {
+            display: grid;
+            grid-template-columns: 128px minmax(0, 1fr);
+            gap: 14px;
+            align-items: stretch;
+        }
+        .axis-panel {
+            background: var(--panel-3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px;
+        }
+        .throttle-column {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 10px;
+            min-height: 382px;
+        }
+        .throttle-rail {
+            display: grid;
+            place-items: center;
+            position: relative;
+        }
+        .throttle-rail::before {
+            content: "";
+            position: absolute;
+            width: 8px;
+            height: 76%;
+            border-radius: 999px;
+            background: linear-gradient(0deg, #7b3636 0%, #2e3438 50%, #2ebd9e 100%);
+        }
+        .steering-console {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 12px;
+            min-height: 382px;
+        }
+        .steering-display {
+            position: relative;
+            min-height: 146px;
+            border-radius: 8px;
+            border: 1px solid #334047;
+            background:
+                linear-gradient(90deg, rgba(239, 97, 91, 0.12), transparent 34%, transparent 66%, rgba(68, 215, 182, 0.12)),
+                #111517;
+        }
+        .steering-display::before {
+            content: "";
+            position: absolute;
+            left: 20px;
+            right: 20px;
+            top: 70px;
+            height: 4px;
+            border-radius: 999px;
+            background: #334047;
+        }
+        .steering-dot {
+            position: absolute;
+            left: calc(var(--steer-left, 50%) - 15px);
+            top: 57px;
+            width: 30px;
+            height: 30px;
+            border-radius: 999px;
+            background: var(--accent);
+            border: 2px solid #06100d;
+            box-shadow: 0 0 24px rgba(68, 215, 182, 0.44);
+            transition: left 120ms ease;
+        }
+        .axis-actions {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
         }
         .preset-row {
             display: grid;
@@ -163,13 +246,13 @@ HTML_PAGE = """
             gap: 10px;
         }
         button {
-            min-height: 66px;
+            min-height: 58px;
             font-size: 1rem;
             font-weight: 700;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 18px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
             cursor: pointer;
-            background: linear-gradient(180deg, rgba(29, 54, 58, 0.95), rgba(14, 29, 33, 0.95));
+            background: #242b2f;
             color: var(--text);
             transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
             user-select: none;
@@ -177,49 +260,45 @@ HTML_PAGE = """
             touch-action: manipulation;
         }
         button:hover {
-            border-color: rgba(77, 215, 168, 0.32);
+            background: #2c3439;
+            border-color: #405158;
         }
         button:active,
         button.active {
             transform: translateY(1px) scale(0.99);
-            background: linear-gradient(180deg, rgba(42, 96, 86, 0.98), rgba(17, 58, 52, 0.98));
+            background: #213833;
+            border-color: var(--accent);
         }
         button.subtle {
             min-height: 52px;
             font-size: 0.95rem;
         }
         button.stop {
-            background: linear-gradient(180deg, rgba(74, 82, 89, 0.98), rgba(43, 51, 56, 0.98));
+            background: #2c3238;
         }
         button.danger {
-            background: linear-gradient(180deg, rgba(210, 82, 71, 0.98), rgba(123, 35, 35, 0.98));
-            border-color: rgba(255, 178, 168, 0.35);
+            background: #432121;
+            border-color: #8d3432;
         }
         button.release {
-            background: linear-gradient(180deg, rgba(77, 215, 168, 0.95), rgba(27, 137, 102, 0.98));
+            background: linear-gradient(180deg, #65e0c2 0%, #2ea98d 100%);
             color: #03100b;
-        }
-        .footer-note {
-            margin-top: 12px;
-            color: var(--muted);
-            font-size: 0.9rem;
-            line-height: 1.5;
         }
         .telemetry {
             display: grid;
             gap: 12px;
         }
         .telemetry-box {
-            padding: 16px;
-            border-radius: 20px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 14px;
+            border-radius: 8px;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
         }
         .telemetry-box h3 {
             margin: 0 0 10px;
             font-size: 0.92rem;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
+            letter-spacing: 0;
             color: var(--muted);
         }
         .telemetry-box pre {
@@ -235,7 +314,8 @@ HTML_PAGE = """
             }
             .meter-grid,
             .preset-row,
-            .mode-row {
+            .mode-row,
+            .drive-axes {
                 grid-template-columns: repeat(2, 1fr);
             }
         }
@@ -249,8 +329,18 @@ HTML_PAGE = """
             }
             .meter-grid,
             .preset-row,
-            .mode-row {
+            .mode-row,
+            .drive-axes {
                 grid-template-columns: 1fr;
+            }
+            input.vertical-range {
+                width: 100%;
+                height: auto;
+                writing-mode: horizontal-tb;
+                direction: ltr;
+            }
+            .throttle-rail::before {
+                display: none;
             }
         }
     </style>
@@ -260,7 +350,7 @@ HTML_PAGE = """
         <div class="hero">
             <div>
                 <h1>JetCar Control Deck</h1>
-                <p>브라우저만으로 스로틀, 조향, 정지, E-stop을 직접 제어합니다. 모바일 터치와 데스크탑 마우스를 모두 지원합니다.</p>
+                <p>Manual drive control</p>
             </div>
             <div class="badge" id="connectionBadge">Connecting...</div>
         </div>
@@ -302,38 +392,42 @@ HTML_PAGE = """
 
                         <div class="control-card">
                             <div class="control-head">
-                                <h2>Throttle Slider</h2>
-                                <span id="throttlePercent">0%</span>
+                                <h2>Drive Axes</h2>
+                                <span><span id="throttlePercent">0%</span> / <span id="steeringPercent">0%</span></span>
                             </div>
-                            <input id="throttleSlider" type="range" min="-100" max="100" value="0" step="1">
+                            <div class="drive-axes">
+                                <div class="axis-panel throttle-column">
+                                    <button data-key="w">FWD</button>
+                                    <div class="throttle-rail">
+                                        <input class="vertical-range" id="throttleSlider" type="range" min="-100" max="100" value="0" step="1">
+                                    </div>
+                                    <button data-key="s">REV</button>
+                                </div>
+                                <div class="axis-panel steering-console">
+                                    <div class="axis-actions">
+                                        <button data-key="a">LEFT</button>
+                                        <button class="stop" data-key="c">CENTER</button>
+                                        <button data-key="d">RIGHT</button>
+                                    </div>
+                                    <div class="steering-display">
+                                        <div class="steering-dot" id="steeringDot"></div>
+                                    </div>
+                                    <input id="steeringSlider" type="range" min="-100" max="100" value="0" step="1">
+                                </div>
+                            </div>
                             <div class="preset-row">
-                                <button class="subtle" data-throttle="-40">REV 40%</button>
-                                <button class="subtle" data-throttle="-20">REV 20%</button>
+                                <button class="subtle" data-throttle="-30">REV 30%</button>
                                 <button class="subtle stop" data-action="stop">STOP</button>
-                                <button class="subtle" data-throttle="20">FWD 20%</button>
-                                <button class="subtle" data-throttle="40">FWD 40%</button>
-                            </div>
-                        </div>
-
-                        <div class="control-card">
-                            <div class="control-head">
-                                <h2>Steering Slider</h2>
-                                <span id="steeringPercent">0%</span>
-                            </div>
-                            <input id="steeringSlider" type="range" min="-100" max="100" value="0" step="1">
-                            <div class="preset-row">
-                                <button class="subtle" data-steering="-100">HARD L</button>
+                                <button class="subtle" data-throttle="30">FWD 30%</button>
                                 <button class="subtle" data-steering="-40">LEFT</button>
-                                <button class="subtle stop" data-action="center">CENTER</button>
                                 <button class="subtle" data-steering="40">RIGHT</button>
-                                <button class="subtle" data-steering="100">HARD R</button>
                             </div>
                         </div>
 
                         <div class="control-card">
                             <div class="control-head">
                                 <h2>Touch Pad</h2>
-                                <span>Press and hold</span>
+                                <span>live input</span>
                             </div>
                             <div class="drive-pad">
                                 <div></div>
@@ -351,15 +445,12 @@ HTML_PAGE = """
                         <div class="control-card">
                             <div class="control-head">
                                 <h2>Safety</h2>
-                                <span>Immediate actions</span>
+                                <span>E-stop path</span>
                             </div>
                             <div class="preset-row">
                                 <button class="danger" data-action="estop">E-STOP</button>
                                 <button class="release" data-action="release">RELEASE</button>
                                 <button class="stop" data-action="reset-all">RESET ALL</button>
-                            </div>
-                            <div class="footer-note">
-                                `RESET ALL`은 스로틀 0, 조향 중앙으로 복귀합니다. E-stop이 켜져 있으면 먼저 `RELEASE`를 눌러야 주행 입력이 다시 반영됩니다.
                             </div>
                         </div>
                     </div>
@@ -371,22 +462,6 @@ HTML_PAGE = """
                     <div class="telemetry-box">
                         <h3>Node Status</h3>
                         <pre id="statusText">Waiting for state...</pre>
-                    </div>
-                    <div class="telemetry-box">
-                        <h3>Quick Guide</h3>
-                        <pre>1. 브라우저에서 슬라이더 또는 버튼으로 조작
-2. `/input/manual/*` 토픽으로 명령 발행
-3. control_mux가 `/vehicle/*`로 중재
-4. vehicle_hw가 실제 PWM 제어 수행</pre>
-                    </div>
-                    <div class="telemetry-box">
-                        <h3>Keyboard Fallback</h3>
-                        <pre>W/S throttle
-A/D steering
-X brake
-C center
-E estop
-R release</pre>
                     </div>
                 </div>
             </div>
@@ -429,9 +504,11 @@ R release</pre>
             driveModeValue.textContent = state.drive_mode;
             driveModeHint.textContent = state.drive_mode;
             throttleSlider.value = Math.round(Number(state.throttle) * 100);
-            steeringSlider.value = Math.round(Number(state.steering) * 100);
+            const steeringPercentValue = Math.round(Number(state.steering) * 100);
+            steeringSlider.value = steeringPercentValue;
+            document.getElementById('steeringDot').style.setProperty('--steer-left', `${50 + steeringPercentValue * 0.4}%`);
             throttlePercent.textContent = `${Math.round(Number(state.throttle) * 100)}%`;
-            steeringPercent.textContent = `${Math.round(Number(state.steering) * 100)}%`;
+            steeringPercent.textContent = `${steeringPercentValue}%`;
             statusText.textContent = state.status;
             document.querySelectorAll('[data-mode]').forEach(function(button) {
                 button.classList.toggle('active', button.dataset.mode === state.drive_mode);
