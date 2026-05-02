@@ -97,7 +97,7 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 os.path.join(decision_share, 'config', 'autonomous_driver.yaml'),
-                {'enabled_on_start': True},
+                {'enabled_on_start': True, 'autonomy_level': 4},
             ],
         ),
         Node(

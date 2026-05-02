@@ -5,6 +5,8 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Bool, Float32
 
+from jetcar_perception.ufld_detector import CULANE_ROW_ANCHORS, UfldLaneDetector
+
 
 class LaneDetectionNode(Node):
     def __init__(self):
@@ -31,6 +33,17 @@ class LaneDetectionNode(Node):
         self.declare_parameter('prefer_half', True)
         self.declare_parameter('yolo_class_name', 'lane')
         self.declare_parameter('yolo_min_mask_pixels', 80)
+        self.declare_parameter('ufld_runtime', 'auto')
+        self.declare_parameter('ufld_model_type', 'culane')
+        self.declare_parameter('ufld_input_width', 800)
+        self.declare_parameter('ufld_input_height', 288)
+        self.declare_parameter('ufld_griding_num', 200)
+        self.declare_parameter('ufld_lane_indices', [1, 2])
+        self.declare_parameter('ufld_row_anchors', CULANE_ROW_ANCHORS)
+        self.declare_parameter('ufld_min_lane_points', 4)
+        self.declare_parameter('ufld_presence_threshold', 0.5)
+        self.declare_parameter('ufld_normalize_mean', [0.485, 0.456, 0.406])
+        self.declare_parameter('ufld_normalize_std', [0.229, 0.224, 0.225])
 
         self.default_lane_center_offset_m = float(self.get_parameter('lane_center_offset_m').value)
         self.default_heading_error_deg = float(self.get_parameter('heading_error_deg').value)
@@ -52,6 +65,17 @@ class LaneDetectionNode(Node):
         self.prefer_half = bool(self.get_parameter('prefer_half').value)
         self.yolo_class_name = str(self.get_parameter('yolo_class_name').value).lower().strip()
         self.yolo_min_mask_pixels = max(1, int(self.get_parameter('yolo_min_mask_pixels').value))
+        self.ufld_runtime = str(self.get_parameter('ufld_runtime').value).lower().strip()
+        self.ufld_model_type = str(self.get_parameter('ufld_model_type').value).lower().strip()
+        self.ufld_input_width = int(self.get_parameter('ufld_input_width').value)
+        self.ufld_input_height = int(self.get_parameter('ufld_input_height').value)
+        self.ufld_griding_num = int(self.get_parameter('ufld_griding_num').value)
+        self.ufld_lane_indices = self.int_list_parameter('ufld_lane_indices')
+        self.ufld_row_anchors = self.int_list_parameter('ufld_row_anchors')
+        self.ufld_min_lane_points = max(1, int(self.get_parameter('ufld_min_lane_points').value))
+        self.ufld_presence_threshold = float(self.get_parameter('ufld_presence_threshold').value)
+        self.ufld_normalize_mean = self.float_list_parameter('ufld_normalize_mean')
+        self.ufld_normalize_std = self.float_list_parameter('ufld_normalize_std')
 
         self.latest_result = None
         self.latest_image_time = None
@@ -77,15 +101,79 @@ class LaneDetectionNode(Node):
             f'meters_per_pixel={self.meters_per_pixel:.4f}'
         )
 
+    def int_list_parameter(self, name):
+        return [int(value) for value in self.list_parameter(name)]
+
+    def float_list_parameter(self, name):
+        return [float(value) for value in self.list_parameter(name)]
+
+    def list_parameter(self, name):
+        value = self.get_parameter(name).value
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(',') if item.strip()]
+        if hasattr(value, 'tolist'):
+            return list(value.tolist())
+        return list(value)
+
     def load_lane_model(self):
-        if self.detector_backend not in ('yolo', 'auto'):
+        if self.detector_backend in ('ufld', 'auto') and self.load_ufld_model():
             return
+
+        if self.detector_backend in ('yolo', 'auto') and self.load_yolo_model():
+            return
+
+        if self.detector_backend in ('ufld', 'yolo', 'auto'):
+            self.detector_backend = 'cv'
+            if self.model_error:
+                self.get_logger().warning(f'lane model unavailable: {self.model_error}; using cv backend')
+
+    def load_ufld_model(self):
+        if self.detector_backend not in ('ufld', 'auto'):
+            return False
         if not self.model_path:
             self.model_error = 'model_path is empty'
-            if self.detector_backend == 'yolo':
-                self.detector_backend = 'cv'
-            self.get_logger().warning(f'YOLO lane model unavailable: {self.model_error}; using cv backend')
-            return
+            return False
+
+        try:
+            self.lane_model = UfldLaneDetector(
+                model_path=self.model_path,
+                runtime=self.ufld_runtime,
+                model_type=self.ufld_model_type,
+                input_width=self.ufld_input_width,
+                input_height=self.ufld_input_height,
+                griding_num=self.ufld_griding_num,
+                lane_indices=self.ufld_lane_indices,
+                row_anchors=self.ufld_row_anchors,
+                min_points_per_lane=self.ufld_min_lane_points,
+                presence_threshold=self.ufld_presence_threshold,
+                device=self.inference_device,
+                prefer_half=self.prefer_half,
+                normalize_mean=self.ufld_normalize_mean,
+                normalize_std=self.ufld_normalize_std,
+            )
+            self.active_model_path = self.model_path
+            self.detector_backend = 'ufld'
+            self.model_error = ''
+            self.get_logger().info(
+                f'UFLD lane model loaded: {self.active_model_path} '
+                f'({self.lane_model.runtime}, {self.ufld_model_type})'
+            )
+            return True
+        except Exception as exc:
+            self.lane_model = None
+            self.model_error = str(exc)
+            if self.detector_backend == 'ufld':
+                self.get_logger().warning(f'UFLD lane model unavailable: {self.model_error}')
+            return False
+
+    def load_yolo_model(self):
+        if self.detector_backend not in ('yolo', 'auto'):
+            return False
+        if not self.model_path:
+            self.model_error = 'model_path is empty'
+            return False
 
         try:
             from ultralytics import YOLO
@@ -93,13 +181,15 @@ class LaneDetectionNode(Node):
             self.lane_model = YOLO(self.model_path)
             self.active_model_path = self.model_path
             self.detector_backend = 'yolo'
+            self.model_error = ''
             self.get_logger().info(f'YOLO lane model loaded: {self.active_model_path}')
+            return True
         except Exception as exc:
             self.lane_model = None
             self.model_error = str(exc)
             if self.detector_backend == 'yolo':
-                self.detector_backend = 'cv'
-            self.get_logger().warning(f'YOLO lane model unavailable: {self.model_error}; using cv backend')
+                self.get_logger().warning(f'YOLO lane model unavailable: {self.model_error}')
+            return False
 
     def image_cb(self, msg: Image):
         try:
@@ -123,9 +213,18 @@ class LaneDetectionNode(Node):
         return frame
 
     def detect_lane(self, frame):
+        if self.detector_backend == 'ufld' and self.lane_model is not None:
+            return self.detect_lane_ufld(frame)
         if self.detector_backend == 'yolo' and self.lane_model is not None:
             return self.detect_lane_yolo(frame)
         return self.detect_lane_cv(frame)
+
+    def detect_lane_ufld(self, frame):
+        height, width = frame.shape[:2]
+        prediction = self.lane_model.detect(frame)
+        if prediction.point_count <= 0:
+            return self.empty_result(0)
+        return self.measure_lane_from_ufld_prediction(prediction, width, height)
 
     def detect_lane_yolo(self, frame):
         height, width = frame.shape[:2]
@@ -210,6 +309,54 @@ class LaneDetectionNode(Node):
             'backend': self.detector_backend,
         }
 
+    def measure_lane_from_ufld_prediction(self, prediction, width, height):
+        lane_fits = []
+        for lane in prediction.lanes:
+            fit = self.fit_lane_points(lane.xs, lane.ys, self.ufld_min_lane_points)
+            if fit is None:
+                continue
+            bottom_x = self.lane_x_at(fit, float(height - 1))
+            if bottom_x is None:
+                continue
+            lane_fits.append((bottom_x, fit))
+
+        if not lane_fits:
+            return self.empty_result(prediction.point_count)
+
+        image_center_px = width / 2.0
+        left_candidates = [item for item in lane_fits if item[0] < image_center_px]
+        right_candidates = [item for item in lane_fits if item[0] >= image_center_px]
+        left_fit = None
+        right_fit = None
+        if left_candidates:
+            left_fit = max(left_candidates, key=lambda item: item[0])[1]
+        if right_candidates:
+            right_fit = min(right_candidates, key=lambda item: item[0])[1]
+
+        lane_center_px = self.estimate_lane_center(width, height, left_fit, right_fit)
+        if lane_center_px is None:
+            lane_center_px = float(np.median([item[0] for item in lane_fits]))
+        offset_m = (lane_center_px - image_center_px) * self.meters_per_pixel
+        heading_error_deg = self.estimate_heading_error_deg(left_fit, right_fit)
+
+        lane_count = int(left_fit is not None) + int(right_fit is not None)
+        confidence = max(0.0, min(1.0, float(prediction.confidence)))
+        if lane_count == 1:
+            confidence *= 0.8
+        elif lane_count == 0:
+            confidence = 0.0
+
+        return {
+            'ready': lane_count > 0,
+            'offset_m': float(offset_m),
+            'heading_error_deg': heading_error_deg,
+            'confidence': confidence,
+            'pixel_count': int(prediction.point_count),
+            'lane_count': lane_count,
+            'backend': 'ufld',
+            'runtime': prediction.runtime,
+        }
+
     def measure_lane_from_pixels(self, xs, ys, width, roi_height, pixel_count):
         left_points = xs < (width / 2.0)
         right_points = ~left_points
@@ -249,6 +396,12 @@ class LaneDetectionNode(Node):
             return None
         sample = max(1, xs.size // 1000)
         fit = np.polyfit(ys[::sample].astype(float), xs[::sample].astype(float), 1)
+        return float(fit[0]), float(fit[1])
+
+    def fit_lane_points(self, xs, ys, min_points):
+        if xs.size < min_points or ys.size < min_points:
+            return None
+        fit = np.polyfit(ys.astype(float), xs.astype(float), 1)
         return float(fit[0]), float(fit[1])
 
     def lane_x_at(self, fit, y_value: float):
@@ -294,6 +447,7 @@ class LaneDetectionNode(Node):
             'heading_error_deg': self.default_heading_error_deg,
             'confidence': 0.0,
             'pixel_count': 0,
+            'backend': self.detector_backend,
         }
         lane_ready = bool(result['ready']) and frame_age <= self.max_frame_age_sec
         offset_m = float(result['offset_m'])
@@ -331,7 +485,8 @@ class LaneDetectionNode(Node):
             f'ready={lane_ready}, image_age_sec={frame_age:.2f}, offset_m={offset_m:.2f}, '
             f'heading_error_deg={heading_error_deg:.1f}, confidence={confidence:.2f}, '
             f'pixels={int(result["pixel_count"])}, lanes={int(result.get("lane_count", 0))}, '
-            f'backend={result.get("backend", self.detector_backend)}'
+            f'backend={result.get("backend", self.detector_backend)}, '
+            f'runtime={result.get("runtime", "")}'
         )
         self.status_pub.publish(status)
 

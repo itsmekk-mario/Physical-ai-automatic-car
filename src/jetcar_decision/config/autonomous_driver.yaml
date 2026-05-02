@@ -1,14 +1,30 @@
 autonomous_driver_node:
   ros__parameters:
     cruise_throttle: 0.08
+    caution_throttle: 0.035
+    lane_lost_throttle: 0.025
     hazard_stop_distance_m: 0.8
+    slow_distance_m: 1.5
+    clear_distance_m: 2.2
+    center_blocked_distance_m: 1.0
+    closing_speed_stop_mps: 0.45
+    closing_speed_slow_mps: 0.18
+    closing_speed_alpha: 0.35
     lane_follow_gain: 1.0
+    lane_confidence_min: 0.25
+    lane_confidence_full: 0.65
+    curve_slow_steering: 0.55
     publish_rate_hz: 10.0
     enabled_on_start: false
     startup_hold_sec: 2.0
     input_timeout_sec: 0.5
     max_throttle_step: 0.01
+    max_brake_step: 0.04
+    max_steering_step: 0.08
+    max_steering_cmd: 0.90
     autonomy_level: 2
+    require_depth: true
     require_lane: false
     lane_follow_min_level: 2
-    use_detection_hazard: false
+    use_detection_hazard: true
+    person_stop_enabled: true

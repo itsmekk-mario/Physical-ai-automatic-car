@@ -13,11 +13,22 @@ lane_detection_node:
     expected_lane_width_px: 280.0
     heading_gain: 0.25
     max_heading_error_deg: 30.0
-    detector_backend: auto
-    model_path: /home/kown/jetcar_ws/runs/segment/jetcar_lane_dual/weights/best.engine
+    detector_backend: ufld
+    model_path: /home/kown/jetcar_ws/models/ufld_culane.torchscript.pt
     confidence_threshold: 0.25
     image_size: 320
     inference_device: cuda:0
     prefer_half: true
     yolo_class_name: ''
     yolo_min_mask_pixels: 80
+    ufld_runtime: auto
+    ufld_model_type: culane
+    ufld_input_width: 800
+    ufld_input_height: 288
+    ufld_griding_num: 200
+    ufld_lane_indices: [1, 2]
+    ufld_row_anchors: [121, 131, 141, 150, 160, 170, 180, 189, 199, 209, 219, 228, 238, 248, 258, 267, 277, 287]
+    ufld_min_lane_points: 4
+    ufld_presence_threshold: 0.5
+    ufld_normalize_mean: [0.485, 0.456, 0.406]
+    ufld_normalize_std: [0.229, 0.224, 0.225]

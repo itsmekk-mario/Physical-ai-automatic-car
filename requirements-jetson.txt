@@ -1,3 +1,5 @@
 numpy<2
 ultralytics
 smbus2
+# UFLD TorchScript uses the Jetson PyTorch install.
+# For ONNX UFLD, install a JetPack-compatible onnxruntime/onnxruntime-gpu wheel separately.
